@@ -85,8 +85,8 @@ int main() {
   position_2d   pos_robot_real{0, 0, 0.0f};  // Initial position (x, y, theta)
   position_2d   pos_m1{1300, 1000, 0.0f}, pos_m1_in_robot{};
   position_2d   pos_m2{-1300, 1000, 0.0f}, pos_m2_in_robot{};
-  position_2d   pos_m3{700, 500, 0.0f}, pos_m3_in_robot{};
-  position_2d   pos_m4{0, 2300, 0.0f}, pos_m4_in_robot{};
+  position_2d   pos_m3{0, 2300, 0.0f}, pos_m4_in_robot{};
+  position_2d   pos_m4{700, 500, 0.0f}, pos_m3_in_robot{};
   transMatrix2d tm_robot_in_world;
   transMatrix2d tm_robot_in_world_inv;
   EKFSLAM       ekf, ekf_real;
@@ -106,9 +106,9 @@ int main() {
   state_real.sigma = state.sigma;
   // Small process noise
   motionNoise.setIdentity();
-  motionNoise(0, 0) *= 1.0;                 // Robot x noise
-  motionNoise(1, 1) *= 1.0;                 // Robot y noise
-  motionNoise(2, 2) *= 0.5 * M_PI / 180.0;  // Robot theta noise
+  motionNoise(0, 0) *= 3.0;   // Robot x noise
+  motionNoise(1, 1) *= 3.0;   // Robot y noise
+  motionNoise(2, 2) *= 0.05;  // Robot theta noise
 
   // // Small measurement noise
   measurementNoise.setIdentity();
@@ -142,7 +142,7 @@ int main() {
   bool saw_m3 = false;
   bool saw_m4 = false;
 
-  for (float t = 0.0; t < 150.0; t += 0.1) {
+  for (float t = 0.0; t < 250.0; t += 0.1) {
     double noise_v = getRandomDouble(-3.0, 3.0);    // Linear velocity noise
     double noise_w = getRandomDouble(-0.05, 0.05);  // Angular velocity noise
     // Simulate control input (e.g., move forward with some angular velocity)
@@ -172,7 +172,7 @@ int main() {
         EKFSLAM::Measurement meas1{
             0, Eigen::Vector2d(
                    dist_m1, std::atan2(pos_m1_in_robot.y, pos_m1_in_robot.x))};
-        ekf.update(state, meas1, measurementNoise);
+        // ekf.update(state, meas1, measurementNoise);
         ekf_real.update(state_real, meas1, measurementNoise);
         saw_m1 = true;
       }
@@ -185,7 +185,7 @@ int main() {
         EKFSLAM::Measurement meas2{
             1, Eigen::Vector2d(
                    dist_m2, std::atan2(pos_m2_in_robot.y, pos_m2_in_robot.x))};
-        ekf.update(state, meas2, measurementNoise);
+        // ekf.update(state, meas2, measurementNoise);
         ekf_real.update(state_real, meas2, measurementNoise);
         saw_m2 = true;
       }
@@ -198,7 +198,7 @@ int main() {
         EKFSLAM::Measurement meas3{
             2, Eigen::Vector2d(
                    dist_m3, std::atan2(pos_m3_in_robot.y, pos_m3_in_robot.x))};
-        ekf.update(state, meas3, measurementNoise);
+        // ekf.update(state, meas3, measurementNoise);
         ekf_real.update(state_real, meas3, measurementNoise);
         saw_m3 = true;
       }
@@ -211,7 +211,7 @@ int main() {
         EKFSLAM::Measurement meas4{
             3, Eigen::Vector2d(
                    dist_m4, std::atan2(pos_m4_in_robot.y, pos_m4_in_robot.x))};
-        ekf.update(state, meas4, measurementNoise);
+        // ekf.update(state, meas4, measurementNoise);
         ekf_real.update(state_real, meas4, measurementNoise);
         saw_m4 = true;
       }
