@@ -9,11 +9,14 @@ Reads build/ekf_state_log.txt and produces a matplotlib animation showing:
   - Landmark uncertainty ellipses  (N_SIGMA * sqrt(var_x/y))
   - Trajectory trail
 
+Both the undisturbed (ideal) and noisy states are shown side by side.
+
 Note: the *_std_* columns in the log file are covariance diagonal elements
 (variances), so sqrt() is applied before use.
 """
 
 import sys
+import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -32,13 +35,17 @@ SAVE_PATH  = None    # set to e.g. "ekf_slam.mp4" to save instead of showing
 
 LM_COLORS  = ["tab:orange", "tab:green", "tab:purple", "tab:red", "tab:brown"]
 
+# Colours for the two robot states
+IDEAL_COLOR = "steelblue"
+NOISY_COLOR = "tomato"
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def robot_vertices(x: float, y: float, theta: float, size: float) -> np.ndarray:
     """Triangle vertices (3×2) for a robot at (x,y) heading theta."""
-    tip   = np.array([np.cos(theta),             np.sin(theta)])
-    left  = np.array([np.cos(theta + 2.4),       np.sin(theta + 2.4)])
-    right = np.array([np.cos(theta - 2.4),       np.sin(theta - 2.4)])
+    tip   = np.array([np.cos(theta),       np.sin(theta)])
+    left  = np.array([np.cos(theta + 2.4), np.sin(theta + 2.4)])
+    right = np.array([np.cos(theta - 2.4), np.sin(theta - 2.4)])
     pts = np.array([x, y]) + size * np.stack([tip, 0.55 * left, 0.55 * right])
     return pts
 
@@ -58,13 +65,7 @@ def main() -> None:
 
     df = pd.read_csv(LOG_PATH)
 
-    # Detect landmarks from column names  (lm0_x, lm1_x, …)
-    lm_ids = sorted({
-        int(c[2:c.index("_", 2)])
-        for c in df.columns if c.startswith("lm") and "_x" in c and not c.endswith("_std_x")
-    })
-    # Safer: count columns named lm{i}_x
-    import re
+    # Detect landmark IDs from ideal columns (lm0_x, lm1_x, …)
     lm_ids = sorted({
         int(m.group(1))
         for c in df.columns
@@ -82,68 +83,98 @@ def main() -> None:
     ax.set_aspect("equal")
     ax.set_xlabel("X  [m]", fontsize=11)
     ax.set_ylabel("Y  [m]", fontsize=11)
-    ax.set_title("EKF SLAM — Robot & Landmark State Estimates", fontsize=13)
+    ax.set_title("EKF SLAM — Ideal (blue) vs Noisy (red) State Estimates",
+                 fontsize=13)
     ax.grid(True, alpha=0.25, lw=0.5)
 
-    # Compute axis limits up front
-    xs = list(df["robot_x"])
-    ys = list(df["robot_y"])
-    for i in lm_ids:
-        lx = df[f"lm{i}_x"]
-        ly = df[f"lm{i}_y"]
-        active = (lx.abs() > 0.01) | (ly.abs() > 0.01)
-        xs += list(lx[active])
-        ys += list(ly[active])
+    # Compute axis limits from both ideal and noisy robot + landmark positions
+    xs, ys = [], []
+    for prefix in ("", "noisy_"):
+        xs += list(df[f"{prefix}robot_x"])
+        ys += list(df[f"{prefix}robot_y"])
+        for i in lm_ids:
+            lx = df[f"{prefix}lm{i}_x"]
+            ly = df[f"{prefix}lm{i}_y"]
+            active = (lx.abs() > 0.01) | (ly.abs() > 0.01)
+            xs += list(lx[active])
+            ys += list(ly[active])
+
     pad_x = (max(xs) - min(xs)) * 0.08 + 80
     pad_y = (max(ys) - min(ys)) * 0.08 + 80
     ax.set_xlim(min(xs) - pad_x, max(xs) + pad_x)
     ax.set_ylim(min(ys) - pad_y, max(ys) + pad_y)
 
-    map_diag  = np.hypot(max(xs) - min(xs), max(ys) - min(ys))
-    robot_sz  = map_diag * 0.012   # triangle size relative to map
+    map_diag = np.hypot(max(xs) - min(xs), max(ys) - min(ys))
+    robot_sz = map_diag * 0.012
 
     # ── Static artists ────────────────────────────────────────────────────────
-    # Trajectory trail
-    trail_line, = ax.plot([], [], "-", color="steelblue", lw=0.9,
-                          alpha=0.55, label="Robot trajectory", zorder=2)
 
-    # Robot pose triangle
-    robot_tri = Polygon(
+    # --- Ideal robot ---
+    ideal_trail, = ax.plot([], [], "-", color=IDEAL_COLOR, lw=0.9,
+                           alpha=0.55, label="Ideal trajectory", zorder=2)
+    ideal_tri = Polygon(
         robot_vertices(0, 0, 0, robot_sz),
-        closed=True, fc="steelblue", ec="navy", lw=1.2, zorder=6,
+        closed=True, fc=IDEAL_COLOR, ec="navy", lw=1.2, zorder=6,
     )
-    ax.add_patch(robot_tri)
-
-    # Robot uncertainty ellipse
-    robot_ell = Ellipse(
+    ax.add_patch(ideal_tri)
+    ideal_ell = Ellipse(
         (0, 0), width=1, height=1,
-        fc="none", ec="steelblue", lw=1.1, ls="--", alpha=0.6, zorder=3,
+        fc="none", ec=IDEAL_COLOR, lw=1.1, ls="--", alpha=0.6, zorder=3,
     )
-    ax.add_patch(robot_ell)
+    ax.add_patch(ideal_ell)
 
-    # Per-landmark artists
-    lm_markers  = []
-    lm_ellipses = []
-    lm_texts    = []
+    # --- Noisy robot ---
+    noisy_trail, = ax.plot([], [], "-", color=NOISY_COLOR, lw=0.9,
+                           alpha=0.55, label="Noisy trajectory", zorder=2)
+    noisy_tri = Polygon(
+        robot_vertices(0, 0, 0, robot_sz),
+        closed=True, fc=NOISY_COLOR, ec="darkred", lw=1.2, zorder=6,
+    )
+    ax.add_patch(noisy_tri)
+    noisy_ell = Ellipse(
+        (0, 0), width=1, height=1,
+        fc="none", ec=NOISY_COLOR, lw=1.1, ls="--", alpha=0.6, zorder=3,
+    )
+    ax.add_patch(noisy_ell)
+
+    # --- Per-landmark artists (ideal: x marker / noisy: + marker) ---
+    ideal_lm_markers  = []
+    ideal_lm_ellipses = []
+    ideal_lm_texts    = []
+    noisy_lm_markers  = []
+    noisy_lm_ellipses = []
     lm_legend_handles = []
 
     for idx, i in enumerate(lm_ids):
         color = LM_COLORS[idx % len(LM_COLORS)]
-        # cross marker
-        marker, = ax.plot([], [], "x", color=color, ms=9, mew=2.2, zorder=7)
-        # uncertainty ellipse
-        ell = Ellipse(
+
+        # Ideal landmark
+        m_ideal, = ax.plot([], [], "x", color=color, ms=9, mew=2.2, zorder=7)
+        e_ideal = Ellipse(
             (0, 0), width=1, height=1,
             fc=color, ec=color, lw=1.2, alpha=0.18, zorder=3, visible=False,
         )
-        ax.add_patch(ell)
-        # label
-        txt = ax.text(0, 0, f"LM {i}", fontsize=8, color=color,
-                      ha="left", va="bottom", zorder=8, visible=False,
-                      fontweight="bold")
-        lm_markers.append(marker)
-        lm_ellipses.append(ell)
-        lm_texts.append(txt)
+        ax.add_patch(e_ideal)
+        t_ideal = ax.text(0, 0, f"LM {i}", fontsize=8, color=color,
+                          ha="left", va="bottom", zorder=8, visible=False,
+                          fontweight="bold")
+
+        # Noisy landmark ('+' marker, slightly transparent)
+        m_noisy, = ax.plot([], [], "+", color=color, ms=9, mew=2.2,
+                           alpha=0.55, zorder=7)
+        e_noisy = Ellipse(
+            (0, 0), width=1, height=1,
+            fc=color, ec=color, lw=1.0, ls=":", alpha=0.12, zorder=3,
+            visible=False,
+        )
+        ax.add_patch(e_noisy)
+
+        ideal_lm_markers.append(m_ideal)
+        ideal_lm_ellipses.append(e_ideal)
+        ideal_lm_texts.append(t_ideal)
+        noisy_lm_markers.append(m_noisy)
+        noisy_lm_ellipses.append(e_noisy)
+
         lm_legend_handles.append(
             mpatches.Patch(color=color, label=f"Landmark {i}")
         )
@@ -155,77 +186,103 @@ def main() -> None:
         bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.7),
     )
 
-    # Sigma label in corner
     ax.text(
         0.98, 0.02,
-        f"Ellipses: {N_SIGMA}σ  (sqrt of covariance diagonal)",
+        f"Ellipses: {N_SIGMA}σ  (sqrt of covariance diagonal)\n"
+        f"× = ideal landmark   + = noisy landmark",
         transform=ax.transAxes, fontsize=7, ha="right", va="bottom",
         color="gray",
     )
 
     # Legend
     legend_elems = [
-        plt.Line2D([0], [0], color="steelblue", lw=1.5, label="Robot trajectory"),
-        mpatches.Patch(fc="steelblue", ec="navy", label="Robot pose"),
-        mpatches.Patch(fc="none", ec="steelblue", ls="--", label="Robot uncertainty"),
+        plt.Line2D([0], [0], color=IDEAL_COLOR, lw=1.5,
+                   label="Ideal trajectory"),
+        mpatches.Patch(fc=IDEAL_COLOR, ec="navy",   label="Ideal robot pose"),
+        mpatches.Patch(fc="none",      ec=IDEAL_COLOR, ls="--",
+                       label="Ideal uncertainty"),
+        plt.Line2D([0], [0], color=NOISY_COLOR, lw=1.5,
+                   label="Noisy trajectory"),
+        mpatches.Patch(fc=NOISY_COLOR, ec="darkred", label="Noisy robot pose"),
+        mpatches.Patch(fc="none",      ec=NOISY_COLOR, ls="--",
+                       label="Noisy uncertainty"),
     ] + lm_legend_handles
     ax.legend(handles=legend_elems, loc="upper right", fontsize=8,
               framealpha=0.85)
 
     # ── Update function ───────────────────────────────────────────────────────
     all_artists = (
-        [trail_line, robot_tri, robot_ell, time_txt]
-        + lm_markers + lm_ellipses + lm_texts
+        [ideal_trail, ideal_tri, ideal_ell,
+         noisy_trail, noisy_tri, noisy_ell,
+         time_txt]
+        + ideal_lm_markers + ideal_lm_ellipses + ideal_lm_texts
+        + noisy_lm_markers + noisy_lm_ellipses
     )
+
+    def update_lm(markers, ellipses, texts, prefix, row, show_text):
+        for idx, i in enumerate(lm_ids):
+            lx = row[f"{prefix}lm{i}_x"]
+            ly = row[f"{prefix}lm{i}_y"]
+            vx = row[f"{prefix}lm{i}_std_x"]
+            vy = row[f"{prefix}lm{i}_std_y"]
+            active = (abs(lx) > 0.01 or abs(ly) > 0.01) and vx > 0.4
+            if active:
+                markers[idx].set_data([lx], [ly])
+                ellipses[idx].set_center((lx, ly))
+                ellipses[idx].set_width( 2.0 * N_SIGMA * np.sqrt(max(vx, 0)))
+                ellipses[idx].set_height(2.0 * N_SIGMA * np.sqrt(max(vy, 0)))
+                ellipses[idx].set_visible(True)
+                if texts is not None:
+                    texts[idx].set_position(
+                        (lx + robot_sz * 0.6, ly + robot_sz * 0.6))
+                    texts[idx].set_visible(True)
+            else:
+                markers[idx].set_data([], [])
+                ellipses[idx].set_visible(False)
+                if texts is not None:
+                    texts[idx].set_visible(False)
 
     def update(frame_no: int):
         row_idx = frame_indices[frame_no]
         row = df.iloc[row_idx]
-
-        # --- trajectory trail ---
         start = max(0, row_idx - TRAIL_LEN)
-        trail_line.set_data(
+
+        # --- Ideal robot ---
+        ideal_trail.set_data(
             df["robot_x"].iloc[start : row_idx + 1],
             df["robot_y"].iloc[start : row_idx + 1],
         )
-
-        # --- robot triangle ---
-        robot_tri.set_xy(
+        ideal_tri.set_xy(
             robot_vertices(row["robot_x"], row["robot_y"],
                            row["robot_theta"], robot_sz)
         )
+        ideal_ell.set_center((row["robot_x"], row["robot_y"]))
+        ideal_ell.set_width( 2.0 * N_SIGMA * np.sqrt(max(row["robot_std_x"], 0)))
+        ideal_ell.set_height(2.0 * N_SIGMA * np.sqrt(max(row["robot_std_y"], 0)))
 
-        # --- robot uncertainty ellipse ---
-        robot_ell.set_center((row["robot_x"], row["robot_y"]))
-        robot_ell.set_width( 2.0 * N_SIGMA * np.sqrt(max(row["robot_std_x"], 0)))
-        robot_ell.set_height(2.0 * N_SIGMA * np.sqrt(max(row["robot_std_y"], 0)))
+        # --- Noisy robot ---
+        noisy_trail.set_data(
+            df["noisy_robot_x"].iloc[start : row_idx + 1],
+            df["noisy_robot_y"].iloc[start : row_idx + 1],
+        )
+        noisy_tri.set_xy(
+            robot_vertices(row["noisy_robot_x"], row["noisy_robot_y"],
+                           row["noisy_robot_theta"], robot_sz)
+        )
+        noisy_ell.set_center((row["noisy_robot_x"], row["noisy_robot_y"]))
+        noisy_ell.set_width(
+            2.0 * N_SIGMA * np.sqrt(max(row["noisy_robot_std_x"], 0)))
+        noisy_ell.set_height(
+            2.0 * N_SIGMA * np.sqrt(max(row["noisy_robot_std_y"], 0)))
 
-        # --- landmarks ---
-        for idx, i in enumerate(lm_ids):
-            lx   = row[f"lm{i}_x"]
-            ly   = row[f"lm{i}_y"]
-            vx   = row[f"lm{i}_std_x"]   # variance (despite "std" name)
-            vy   = row[f"lm{i}_std_y"]
+        # --- Landmarks ---
+        update_lm(ideal_lm_markers, ideal_lm_ellipses, ideal_lm_texts,
+                  "", row, show_text=True)
+        update_lm(noisy_lm_markers, noisy_lm_ellipses, None,
+                  "noisy_", row, show_text=False)
 
-            # A landmark is "active" once it has been first observed
-            # (position leaves the origin AND variance exceeds the tiny prior)
-            active = (abs(lx) > 0.01 or abs(ly) > 0.01) and vx > 0.4
-
-            if active:
-                lm_markers[idx].set_data([lx], [ly])
-                lm_ellipses[idx].set_center((lx, ly))
-                lm_ellipses[idx].set_width( 2.0 * N_SIGMA * np.sqrt(max(vx, 0)))
-                lm_ellipses[idx].set_height(2.0 * N_SIGMA * np.sqrt(max(vy, 0)))
-                lm_ellipses[idx].set_visible(True)
-                lm_texts[idx].set_position((lx + robot_sz * 0.6,
-                                            ly + robot_sz * 0.6))
-                lm_texts[idx].set_visible(True)
-            else:
-                lm_markers[idx].set_data([], [])
-                lm_ellipses[idx].set_visible(False)
-                lm_texts[idx].set_visible(False)
-
-        time_txt.set_text(f"t = {row['time']:6.2f} s   frame {row_idx+1}/{len(df)}")
+        time_txt.set_text(
+            f"t = {row['time']:6.2f} s   frame {row_idx+1}/{len(df)}")
         return all_artists
 
     # ── Animate ───────────────────────────────────────────────────────────────

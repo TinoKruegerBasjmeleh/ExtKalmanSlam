@@ -19,31 +19,32 @@ void printState(const EKFSLAM::EKFState& state) {
             << state.sigma << std::endl;
 }
 
-void writeStateToFile(std::ofstream& file, double time, EKFSLAM& ekf,
-                      const EKFSLAM::EKFState& state) {
-  // Get variances and convert to standard deviations
+// Write one EKF state block (pose + landmarks) into the already-open row.
+static void writeStateBlock(std::ofstream& file, EKFSLAM& ekf,
+                            const EKFSLAM::EKFState& state) {
   EKFSLAM::Variances var = ekf.getVariances(state);
 
-  // Write time
-  file << time;
-
-  // Write robot pose (x, y, thzcc_conn_testeta)
+  // Robot pose
   file << "," << state.mu(0) << "," << state.mu(1) << "," << state.mu(2);
-
-  // Write robot standard deviations (std_x, std_y, std_theta)
+  // Robot standard deviations
   file << "," << std::sqrt(var.robot(0)) << "," << std::sqrt(var.robot(1))
        << "," << std::sqrt(state.sigma(2, 2));
 
-  // Write landmark poses and standard deviations
+  // Landmark poses and standard deviations
   for (size_t i = 0; i < var.landmarks.size(); ++i) {
     int idx = ekf.landmarkIndex(i);
-    // Landmark pose
     file << "," << state.mu(idx) << "," << state.mu(idx + 1);
-    // Landmark standard deviations
     file << "," << std::sqrt(var.landmarks[i](0)) << ","
          << std::sqrt(var.landmarks[i](1));
   }
+}
 
+void writeStateToFile(std::ofstream& file, double time, EKFSLAM& ekf_ideal,
+                      const EKFSLAM::EKFState& state_ideal, EKFSLAM& ekf_noisy,
+                      const EKFSLAM::EKFState& state_noisy) {
+  file << time;
+  writeStateBlock(file, ekf_ideal, state_ideal);
+  writeStateBlock(file, ekf_noisy, state_noisy);
   file << std::endl;
 }
 
@@ -110,8 +111,8 @@ int main() {
   motionNoise(2, 2) *= 0.5 * M_PI / 180.0;  // Robot theta noise
 
   // // Small measurement noise
-  // measurementNoise.setIdentity();
-  // measurementNoise *= 10.0;
+  measurementNoise.setIdentity();
+  measurementNoise *= 10.0;
 
   // Open output file and write header
   std::ofstream outFile("ekf_state_log.txt", std::ios::out | std::ios::trunc);
@@ -120,13 +121,21 @@ int main() {
     return 1;
   }
 
-  // Write header
-  outFile << "time,robot_x,robot_y,robot_theta,robot_std_x,robot_std_y,"
-             "robot_std_theta";
-  for (size_t i = 0; i < EKFSLAM::NUM_LANDMARKS; ++i) {  // 2 landmarks
-    outFile << ",lm" << i << "_x,lm" << i << "_y,lm" << i << "_std_x,lm" << i
-            << "_std_y";
-  }
+  // Write header — ideal (undisturbed) columns first, then noisy columns
+  auto writeLmHeader = [&](const std::string& prefix) {
+    for (size_t i = 0; i < EKFSLAM::NUM_LANDMARKS; ++i) {
+      outFile << "," << prefix << "lm" << i << "_x," << prefix << "lm" << i
+              << "_y," << prefix << "lm" << i << "_std_x," << prefix << "lm"
+              << i << "_std_y";
+    }
+  };
+  outFile
+      << "time"
+      << ",robot_x,robot_y,robot_theta,robot_std_x,robot_std_y,robot_std_theta";
+  writeLmHeader("");
+  outFile << ",noisy_robot_x,noisy_robot_y,noisy_robot_theta"
+             ",noisy_robot_std_x,noisy_robot_std_y,noisy_robot_std_theta";
+  writeLmHeader("noisy_");
   outFile << std::endl;
   bool saw_m1 = false;
   bool saw_m2 = false;
@@ -226,9 +235,8 @@ int main() {
               << "), Theta: " << pos_m4_in_robot.rho * 180.0 / M_PI
               << " degrees" << "  noise: " << noise_v << std::endl;
 
-    // Write state to file
-    // writeStateToFile(outFile, t, ekf, state);
-    writeStateToFile(outFile, t, ekf_real, state_real);
+    // Write state to file (ideal first, then noisy)
+    writeStateToFile(outFile, t, ekf, state, ekf_real, state_real);
   }
 
   // Close output file
