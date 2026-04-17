@@ -247,8 +247,6 @@ class EKFSLAM {
 
   void update(EKFState& state, Measurement& meas, const Eigen::Matrix2d& Q,
               bool pose_only = false) {
-    const int       n          = state.mu.size();
-
     int             landmarkId = meas.id;
     Eigen::Vector2d z          = meas.z;
 
