@@ -4,7 +4,7 @@ A C++17 implementation of EKF-based Simultaneous Localization and Mapping (SLAM)
 
 ## Demo
 
-<video src="ekf_slam_4lm_disturbed.mp4" controls width="100%"></video>
+![EKF SLAM demo](ekf_slam_4lm_disturbed.gif)
 
 The animation shows two EKF SLAM instances running in parallel:
 - **Left** — ideal odometry (no control noise), measurement update disabled
