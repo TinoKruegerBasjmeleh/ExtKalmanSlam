@@ -108,11 +108,12 @@ int main() {
   motionNoise.setIdentity();
   motionNoise(0, 0) *= 3.0;   // Robot x noise
   motionNoise(1, 1) *= 3.0;   // Robot y noise
-  motionNoise(2, 2) *= 0.05;  // Robot theta noise
+  motionNoise(2, 2) *= 0.10;  // Robot theta noise
 
   // // Small measurement noise
   measurementNoise.setIdentity();
-  measurementNoise *= 10.0;
+  measurementNoise(0, 0) = 10.0;
+  measurementNoise(1, 1) = 0.1;
 
   // Open output file and write header
   std::ofstream outFile("ekf_state_log.txt", std::ios::out | std::ios::trunc);
@@ -143,8 +144,8 @@ int main() {
   bool saw_m4 = false;
 
   for (float t = 0.0; t < 250.0; t += 0.1) {
-    double noise_v = getRandomDouble(-3.0, 3.0);    // Linear velocity noise
-    double noise_w = getRandomDouble(-0.05, 0.05);  // Angular velocity noise
+    double noise_v = getRandomDouble(-10.0, 10.0);  // Linear velocity noise
+    double noise_w = getRandomDouble(-0.07, 0.07);  // Angular velocity noise
     // Simulate control input (e.g., move forward with some angular velocity)
     EKFSLAM::Control control{100.0, 0.1, dt};  // Linear velocity,
                                                // angular velocity,
@@ -168,53 +169,53 @@ int main() {
     ekf_real.predict(state_real, control_real, motionNoise);
 
     if (dist_m1 < 500.0f) {
-      if (!saw_m1) {
-        EKFSLAM::Measurement meas1{
-            0, Eigen::Vector2d(
-                   dist_m1, std::atan2(pos_m1_in_robot.y, pos_m1_in_robot.x))};
-        // ekf.update(state, meas1, measurementNoise);
-        ekf_real.update(state_real, meas1, measurementNoise);
-        saw_m1 = true;
-      }
+      //      if (!saw_m1) {
+      EKFSLAM::Measurement meas1{
+          0, Eigen::Vector2d(dist_m1,
+                             std::atan2(pos_m1_in_robot.y, pos_m1_in_robot.x))};
+      // ekf.update(state, meas1, measurementNoise);
+      ekf_real.update(state_real, meas1, measurementNoise, saw_m1);
+      saw_m1 = true;
+      //      }
     } else {
       saw_m1 = false;
     }
 
     if (dist_m2 < 500.0f) {
-      if (!saw_m2) {
-        EKFSLAM::Measurement meas2{
-            1, Eigen::Vector2d(
-                   dist_m2, std::atan2(pos_m2_in_robot.y, pos_m2_in_robot.x))};
-        // ekf.update(state, meas2, measurementNoise);
-        ekf_real.update(state_real, meas2, measurementNoise);
-        saw_m2 = true;
-      }
+      //      if (!saw_m2) {
+      EKFSLAM::Measurement meas2{
+          1, Eigen::Vector2d(dist_m2,
+                             std::atan2(pos_m2_in_robot.y, pos_m2_in_robot.x))};
+      // ekf.update(state, meas2, measurementNoise);
+      ekf_real.update(state_real, meas2, measurementNoise, saw_m2);
+      saw_m2 = true;
+      //      }
     } else {
       saw_m2 = false;
     }
 
     if (dist_m3 < 500.0f) {
-      if (!saw_m3) {
-        EKFSLAM::Measurement meas3{
-            2, Eigen::Vector2d(
-                   dist_m3, std::atan2(pos_m3_in_robot.y, pos_m3_in_robot.x))};
-        // ekf.update(state, meas3, measurementNoise);
-        ekf_real.update(state_real, meas3, measurementNoise);
-        saw_m3 = true;
-      }
+      // if (!saw_m3) {
+      EKFSLAM::Measurement meas3{
+          2, Eigen::Vector2d(dist_m3,
+                             std::atan2(pos_m3_in_robot.y, pos_m3_in_robot.x))};
+      // ekf.update(state, meas3, measurementNoise);
+      ekf_real.update(state_real, meas3, measurementNoise, saw_m3);
+      saw_m3 = true;
+      //}
     } else {
       saw_m3 = false;
     }
 
     if (dist_m4 < 500.0f) {
-      if (!saw_m4) {
-        EKFSLAM::Measurement meas4{
-            3, Eigen::Vector2d(
-                   dist_m4, std::atan2(pos_m4_in_robot.y, pos_m4_in_robot.x))};
-        // ekf.update(state, meas4, measurementNoise);
-        ekf_real.update(state_real, meas4, measurementNoise);
-        saw_m4 = true;
-      }
+      // if (!saw_m4) {
+      EKFSLAM::Measurement meas4{
+          3, Eigen::Vector2d(dist_m4,
+                             std::atan2(pos_m4_in_robot.y, pos_m4_in_robot.x))};
+      // ekf.update(state, meas4, measurementNoise);
+      ekf_real.update(state_real, meas4, measurementNoise, saw_m4);
+      saw_m4 = true;
+      //}
     } else {
       saw_m4 = false;
     }

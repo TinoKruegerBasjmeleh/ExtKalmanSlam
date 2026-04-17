@@ -245,7 +245,8 @@ class EKFSLAM {
                                             // landmark covariance
   }
 
-  void update(EKFState& state, Measurement& meas, const Eigen::Matrix2d& Q) {
+  void update(EKFState& state, Measurement& meas, const Eigen::Matrix2d& Q,
+              bool pose_only = false) {
     const int       n          = state.mu.size();
 
     int             landmarkId = meas.id;
@@ -253,6 +254,7 @@ class EKFSLAM {
 
     if (!checkIfLandmarkObserved(state, landmarkId)) {
       initializeLandmark(state, landmarkId, z, Q);
+      return;
     }
     // 1. Predict measurement
     Eigen::Vector2d z_hat = predictLandmarkMeasurement(state.mu, landmarkId);
@@ -268,9 +270,13 @@ class EKFSLAM {
     Eigen::Matrix<double, 5, 5> sigma_sub      = state.sigma.block<5, 5>(0, 0);
     Eigen::Matrix2d             sigma_landmark = state.sigma.block<2, 2>(
         landmarkIndex(landmarkId), landmarkIndex(landmarkId));
-    sigma_sub.block<2, 2>(3, 3)   = sigma_landmark;
+    sigma_sub.block<2, 2>(3, 3) = sigma_landmark;
     // 4. Innovation covariance
-    Eigen::Matrix2d             S = H * sigma_sub * H.transpose() + Q;
+    Eigen::Matrix2d S = H * sigma_sub * H.transpose() + Q;  // Is Q ododmetey
+                                                            // and measurement
+                                                            // noise? Yes, it's
+                                                            // the measurement
+                                                            // noise covariance
 
     // 5. Kalman gain
     Eigen::Matrix<double, 5, 2> K = sigma_sub * H.transpose() * S.inverse();
@@ -281,6 +287,10 @@ class EKFSLAM {
     state.mu(2) += K(2, 0) * y(0) + K(2, 1) * y(1);
     state.mu(landmarkIndex(landmarkId)) += K(3, 0) * y(0) + K(3, 1) * y(1);
     state.mu(landmarkIndex(landmarkId) + 1) += K(4, 0) * y(0) + K(4, 1) * y(1);
+
+    if (pose_only) {
+      return;
+    }
 
     // 7. Covariance update (Joseph form recommended)
     Eigen::MatrixXd I             = Eigen::MatrixXd::Identity(5, 5);

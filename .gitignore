@@ -1,0 +1,15 @@
+# Build artifacts
+build/
+
+# Generated runtime outputs
+*.mp4
+!ekf_slam_4lm_disturbed.mp4
+ekf_state_log.txt
+
+# IDE config (machine-specific)
+.vscode/
+
+# Common C++ artifacts
+*.o
+*.a
+*.out
