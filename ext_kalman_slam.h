@@ -246,7 +246,7 @@ class EKFSLAM {
   }
 
   void update(EKFState& state, Measurement& meas, const Eigen::Matrix2d& Q,
-              bool pose_only = false) {
+              bool detect_loop_closure = false) {
     int             landmarkId = meas.id;
     Eigen::Vector2d z          = meas.z;
 
@@ -286,7 +286,7 @@ class EKFSLAM {
     state.mu(landmarkIndex(landmarkId)) += K(3, 0) * y(0) + K(3, 1) * y(1);
     state.mu(landmarkIndex(landmarkId) + 1) += K(4, 0) * y(0) + K(4, 1) * y(1);
 
-    if (pose_only) {
+    if (!detect_loop_closure) {
       return;
     }
 
