@@ -2,10 +2,13 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
-#include "position2d.h"
 #include "ext_kalman_slam.h"
 #include "cotrans.h"
 #include <random>
+
+using Pose  = Position2D<double>;
+using TMat  = TransMatrix2D<double>;
+using CT    = CoTransT<double>;
 
 struct position {
   double x;
@@ -48,10 +51,10 @@ void writeStateToFile(std::ofstream& file, double time, EKFSLAM& ekf_ideal,
   file << std::endl;
 }
 
-void calcOdometry(position_2d& pos, const EKFSLAM::Control& u) {
-  double x     = static_cast<double>(pos.x);
-  double y     = static_cast<double>(pos.y);
-  double theta = static_cast<double>(pos.rho);
+void calcOdometry(Pose& pos, const EKFSLAM::Control& u) {
+  double x     = pos.x;
+  double y     = pos.y;
+  double theta = pos.rho;
 
   if (std::fabs(u.w) < 1e-5) {
     // Straight motion
@@ -66,10 +69,10 @@ void calcOdometry(position_2d& pos, const EKFSLAM::Control& u) {
   }
 }
 
-float calcDist(const position_2d& pos1, const position_2d& pos2 = {}) {
-  double dx = static_cast<double>(pos1.x - pos2.x);
-  double dy = static_cast<double>(pos1.y - pos2.y);
-  return static_cast<float>(std::sqrt(dx * dx + dy * dy));
+double calcDist(const Pose& pos1, const Pose& pos2 = {}) {
+  double dx = pos1.x - pos2.x;
+  double dy = pos1.y - pos2.y;
+  return std::sqrt(dx * dx + dy * dy);
 }
 
 double getRandomDouble(double min, double max) {
@@ -82,15 +85,13 @@ int main() {
   // Create an instance of the EKF SLAM class
   static constexpr float dt                = 0.1;    // Time step
   static constexpr float measurement_range = 500.0;  // Measurement range in mm
-  position_2d       pos_robot{0, 0, 0.0f};  // Initial position (x, y, theta)
-  // position_2d   pos_robot_real{0, 0, 0.0f};  // Initial position (x, y,
-  // theta)
-  position_2d       pos_m1{1300, 1000, 0.0f}, pos_m1_in_robot{};
-  position_2d       pos_m2{-1300, 1000, 0.0f}, pos_m2_in_robot{};
-  position_2d       pos_m3{0, 2300, 0.0f}, pos_m3_in_robot{};
-  position_2d       pos_m4{700, 500, 0.0f}, pos_m4_in_robot{};
-  transMatrix2d     tm_robot_in_world;
-  transMatrix2d     tm_robot_in_world_inv;
+  Pose              pos_robot{0, 0, 0};  // Initial position (x, y, theta)
+  Pose              pos_m1{1300, 1000, 0}, pos_m1_in_robot{};
+  Pose              pos_m2{-1300, 1000, 0}, pos_m2_in_robot{};
+  Pose              pos_m3{0, 2300, 0}, pos_m3_in_robot{};
+  Pose              pos_m4{700, 500, 0}, pos_m4_in_robot{};
+  TMat              tm_robot_in_world{};
+  TMat              tm_robot_in_world_inv{};
   EKFSLAM           ekf, ekf_real;
   EKFSLAM::EKFState state{}, state_real{};
   Eigen::Matrix3d   motionNoise;
@@ -165,17 +166,17 @@ int main() {
     EKFSLAM::Control control_real{control.v + noise_v, control.w + noise_w,
                                   control.dt};
     calcOdometry(pos_robot, control);
-    CoTrans::getTransMatrix2d(tm_robot_in_world, &pos_robot);
-    CoTrans::invertTransMatrix2d(tm_robot_in_world, tm_robot_in_world_inv);
-    CoTrans::transPosition2d(tm_robot_in_world_inv, &pos_m1, &pos_m1_in_robot);
-    CoTrans::transPosition2d(tm_robot_in_world_inv, &pos_m2, &pos_m2_in_robot);
-    CoTrans::transPosition2d(tm_robot_in_world_inv, &pos_m3, &pos_m3_in_robot);
-    CoTrans::transPosition2d(tm_robot_in_world_inv, &pos_m4, &pos_m4_in_robot);
+    CT::getTransMatrix2d(tm_robot_in_world, pos_robot);
+    CT::invertTransMatrix2d(tm_robot_in_world_inv, tm_robot_in_world);
+    CT::transPosition2d(tm_robot_in_world_inv, pos_m1, pos_m1_in_robot);
+    CT::transPosition2d(tm_robot_in_world_inv, pos_m2, pos_m2_in_robot);
+    CT::transPosition2d(tm_robot_in_world_inv, pos_m3, pos_m3_in_robot);
+    CT::transPosition2d(tm_robot_in_world_inv, pos_m4, pos_m4_in_robot);
 
-    float dist_m1 = calcDist(pos_m1_in_robot);
-    float dist_m2 = calcDist(pos_m2_in_robot);
-    float dist_m3 = calcDist(pos_m3_in_robot);
-    float dist_m4 = calcDist(pos_m4_in_robot);
+    double dist_m1 = calcDist(pos_m1_in_robot);
+    double dist_m2 = calcDist(pos_m2_in_robot);
+    double dist_m3 = calcDist(pos_m3_in_robot);
+    double dist_m4 = calcDist(pos_m4_in_robot);
 
     ekf.predict(state, control, motionNoise);
     ekf_real.predict(state_real, control_real, motionNoise);

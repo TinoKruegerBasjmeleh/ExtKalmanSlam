@@ -12,9 +12,13 @@ class EKFSLAMTest : public ::testing::Test {
   Eigen::Matrix2d      measurementNoise;
 
   void SetUp() override {
-    // Initialize state with robot at origin and two landmarks
-    state.mu    = Eigen::VectorXd::Zero(7);  // [x, y, theta, lm1_x, lm1_y, lm2_x, lm2_y]
-    state.sigma = Eigen::MatrixXd::Identity(7, 7) * 0.1;
+    // Initialize state with robot at origin and NUM_LANDMARKS landmarks.
+    // EKFSLAM::predict() builds STATE_SIZE x STATE_SIZE Jacobian/noise
+    // matrices internally, so sigma must match STATE_SIZE exactly.
+    state.mu    = Eigen::VectorXd::Zero(EKFSLAM::STATE_SIZE);
+    state.sigma = Eigen::MatrixXd::Identity(EKFSLAM::STATE_SIZE,
+                                            EKFSLAM::STATE_SIZE) *
+                  0.1;
 
     // Small process noise
     motionNoise.setIdentity();
@@ -125,10 +129,11 @@ TEST_F(EKFSLAMTest, PredictUpdatesRobotPose) {
   EXPECT_NE(state.mu(0), mu_before(0));
 
   // Landmarks should remain unchanged
-  EXPECT_DOUBLE_EQ(state.mu(3), mu_before(3));
-  EXPECT_DOUBLE_EQ(state.mu(4), mu_before(4));
-  EXPECT_DOUBLE_EQ(state.mu(5), mu_before(5));
-  EXPECT_DOUBLE_EQ(state.mu(6), mu_before(6));
+  for (size_t i = 0; i < EKFSLAM::NUM_LANDMARKS; ++i) {
+    int idx = ekf.landmarkIndex(i);
+    EXPECT_DOUBLE_EQ(state.mu(idx), mu_before(idx));
+    EXPECT_DOUBLE_EQ(state.mu(idx + 1), mu_before(idx + 1));
+  }
 }
 
 TEST_F(EKFSLAMTest, PredictIncreasesUncertainty) {
@@ -371,7 +376,9 @@ TEST_F(EKFSLAMTest, UpdateReducesUncertainty) {
 TEST_F(EKFSLAMTest, FullEKFCycle) {
   // Start at origin
   state.mu.setZero();
-  state.sigma = Eigen::MatrixXd::Identity(7, 7) * 0.1;
+  state.sigma = Eigen::MatrixXd::Identity(EKFSLAM::STATE_SIZE,
+                                          EKFSLAM::STATE_SIZE) *
+                0.1;
 
   // Step 1: Move forward
   EKFSLAM::Control u1{1.0, 0.0, 1.0};
@@ -406,8 +413,9 @@ TEST_F(EKFSLAMTest, FullEKFCycle) {
 }
 
 TEST_F(EKFSLAMTest, LandmarkIndexHelper) {
-  EXPECT_EQ(ekf.landmarkIndex(0), 3);
-  EXPECT_EQ(ekf.landmarkIndex(1), 5);
+  for (size_t i = 0; i < EKFSLAM::NUM_LANDMARKS; ++i) {
+    EXPECT_EQ(ekf.landmarkIndex(i), static_cast<int>(3 + 2 * i));
+  }
 }
 
 TEST_F(EKFSLAMTest, LandmarkPoseRetrieval) {

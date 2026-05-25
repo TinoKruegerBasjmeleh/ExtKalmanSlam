@@ -14,7 +14,7 @@ find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
 # Add main executable
-add_executable(${PROJECT_NAME} main.cpp cotrans.cpp)
+add_executable(${PROJECT_NAME} main.cpp)
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME} ${EIGEN3_LIBRARIES})
@@ -33,7 +33,7 @@ if(BUILD_TESTS)
   enable_testing()
 
   # Add test executable
-  add_executable(test_ext_kalman_slam test_ext_kalman_slam.cpp cotrans.cpp)
+  add_executable(test_ext_kalman_slam test_ext_kalman_slam.cpp)
 
   # Link test libraries
   target_link_libraries(test_ext_kalman_slam

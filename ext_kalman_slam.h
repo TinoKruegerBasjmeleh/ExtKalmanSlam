@@ -220,19 +220,17 @@ class EKFSLAM {
 
     int         idx   = landmarkIndex(landmarkId);
 
-    // Initialize landmark position in global coordinates
-    position_2d robot_pose{static_cast<float>(x), static_cast<float>(y),
-                           static_cast<float>(theta)};
-    position_2d landmark_pose =
-        position_2d{static_cast<float>(r * std::cos(phi)),
-                    static_cast<float>(r * std::sin(phi)), 0.0};
-    position_2d   landmark_pose_in_world{};
+    // Initialize landmark position in global coordinates using the
+    // double-precision templated CoTransT (the legacy float CoTrans
+    // truncates offsets to int inside getOffset).
+    Position2D<double> robot_pose{x, y, theta};
+    Position2D<double> landmark_pose{r * std::cos(phi), r * std::sin(phi), 0.0};
+    Position2D<double> landmark_pose_in_world{};
 
-    transMatrix2d tm_robot_in_world;
-    CoTrans::getTransMatrix2d(tm_robot_in_world, &robot_pose);
-
-    CoTrans::transPosition2d(tm_robot_in_world, &landmark_pose,
-                             &landmark_pose_in_world);
+    TransMatrix2D<double> tm_robot_in_world{};
+    CoTransT<double>::getTransMatrix2d(tm_robot_in_world, robot_pose);
+    CoTransT<double>::transPosition2d(tm_robot_in_world, landmark_pose,
+                                      landmark_pose_in_world);
 
     double lm_x       = landmark_pose_in_world.x;
     double lm_y       = landmark_pose_in_world.y;
