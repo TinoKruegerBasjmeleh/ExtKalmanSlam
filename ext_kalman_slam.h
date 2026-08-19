@@ -1,3 +1,6 @@
+#ifndef EXT_KALMAN_SLAM_H_
+#define EXT_KALMAN_SLAM_H_
+
 #include <Eigen/Dense>
 #include <cmath>
 #include <vector>
@@ -5,6 +8,7 @@
 
 #include "angle_tool.h"
 #include "cotrans.h"
+#include "landmark_map.h"
 
 class EKFSLAM {
  public:
@@ -211,14 +215,14 @@ class EKFSLAM {
   void initializeLandmark(EKFState& state, int landmarkId,
                           const Eigen::Vector2d& z, const Eigen::Matrix2d& Q) {
     // z = [range, bearing] measurement
-    double      r     = z(0);  // range
-    double      phi   = z(1);  // bearing
+    double             r     = z(0);  // range
+    double             phi   = z(1);  // bearing
 
-    double      x     = state.mu(0);
-    double      y     = state.mu(1);
-    double      theta = state.mu(2);
+    double             x     = state.mu(0);
+    double             y     = state.mu(1);
+    double             theta = state.mu(2);
 
-    int         idx   = landmarkIndex(landmarkId);
+    int                idx   = landmarkIndex(landmarkId);
 
     // Initialize landmark position in global coordinates using the
     // double-precision templated CoTransT (the legacy float CoTrans
@@ -323,4 +327,55 @@ class EKFSLAM {
 
     return var;
   }
+
+  /****************************************************************************
+   * @brief setStateFromMap
+   * Seed the EKF state at the beginning of tracking from a previously stored
+   * LandmarkMap. Each landmark's position is written into the state mean and
+   * its 2x2 covariance block is set from the stored standard deviations. Only
+   * ids that fit within the fixed state layout are applied. No run-time update
+   * of the map is performed after this.
+   * @param state the EKF state to seed (mean and covariance)
+   * @param map the landmark map to read from
+   * ***************************************************************************/
+  void setStateFromMap(EKFState& state, const LandmarkMap& map) {
+    for (const Landmark& lm : map.getAll()) {
+      if (lm.id < 0 || static_cast<size_t>(lm.id) >= NUM_LANDMARKS) {
+        continue;
+      }
+      int idx           = landmarkIndex(lm.id);
+      state.mu(idx)     = lm.x;
+      state.mu(idx + 1) = lm.y;
+
+      // Reset the landmark covariance block to a diagonal built from the
+      // stored standard deviations (no cross-covariances), consistent with
+      // initializeLandmark().
+      state.sigma.block<2, 2>(idx, idx).setZero();
+      state.sigma(idx, idx)         = lm.std_x * lm.std_x;
+      state.sigma(idx + 1, idx + 1) = lm.std_y * lm.std_y;
+    }
+  }
+
+  /****************************************************************************
+   * @brief getMapFromState
+   * Build a LandmarkMap holding the current landmark estimates (position,
+   * standard deviations and observed flag) so the already-existing landmarks
+   * can be stored / serialised.
+   * @param state the current EKF state
+   * @return a LandmarkMap populated from the state
+   * ***************************************************************************/
+  LandmarkMap getMapFromState(const EKFState& state) {
+    LandmarkMap map;
+    Variances   var = getVariances(state);
+    for (size_t i = 0; i < NUM_LANDMARKS; ++i) {
+      int             id  = static_cast<int>(i);
+      Eigen::Vector2d pos = landmarkPose(state, id);
+      map.addLandmark(id, pos.x(), pos.y(), std::sqrt(var.landmarks[i](0)),
+                      std::sqrt(var.landmarks[i](1)),
+                      checkIfLandmarkObserved(state, id));
+    }
+    return map;
+  }
 };
+
+#endif  // EXT_KALMAN_SLAM_H_

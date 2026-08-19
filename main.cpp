@@ -4,11 +4,12 @@
 #include <cmath>
 #include "ext_kalman_slam.h"
 #include "cotrans.h"
+#include "landmark_map.h"
 #include <random>
 
-using Pose  = Position2D<double>;
-using TMat  = TransMatrix2D<double>;
-using CT    = CoTransT<double>;
+using Pose = Position2D<double>;
+using TMat = TransMatrix2D<double>;
+using CT   = CoTransT<double>;
 
 struct position {
   double x;
@@ -85,17 +86,17 @@ int main() {
   // Create an instance of the EKF SLAM class
   static constexpr float dt                = 0.1;    // Time step
   static constexpr float measurement_range = 500.0;  // Measurement range in mm
-  Pose              pos_robot{0, 0, 0};  // Initial position (x, y, theta)
-  Pose              pos_m1{1300, 1000, 0}, pos_m1_in_robot{};
-  Pose              pos_m2{-1300, 1000, 0}, pos_m2_in_robot{};
-  Pose              pos_m3{0, 2300, 0}, pos_m3_in_robot{};
-  Pose              pos_m4{700, 500, 0}, pos_m4_in_robot{};
-  TMat              tm_robot_in_world{};
-  TMat              tm_robot_in_world_inv{};
-  EKFSLAM           ekf, ekf_real;
-  EKFSLAM::EKFState state{}, state_real{};
-  Eigen::Matrix3d   motionNoise;
-  Eigen::Matrix2d   measurementNoise;
+  Pose                   pos_robot{0, 0, 0};  // Initial position (x, y, theta)
+  Pose                   pos_m1{1300, 1000, 0}, pos_m1_in_robot{};
+  Pose                   pos_m2{-1300, 1000, 0}, pos_m2_in_robot{};
+  Pose                   pos_m3{0, 2300, 0}, pos_m3_in_robot{};
+  Pose                   pos_m4{700, 500, 0}, pos_m4_in_robot{};
+  TMat                   tm_robot_in_world{};
+  TMat                   tm_robot_in_world_inv{};
+  EKFSLAM                ekf, ekf_real;
+  EKFSLAM::EKFState      state{}, state_real{};
+  Eigen::Matrix3d        motionNoise;
+  Eigen::Matrix2d        measurementNoise;
 
   // Initialize state with robot at origin and two landmarks
   state.mu      = Eigen::VectorXd::Zero(EKFSLAM::STATE_SIZE);  // [x, y, theta,
@@ -117,6 +118,15 @@ int main() {
   measurementNoise.setIdentity();
   measurementNoise(0, 0) = 5.0;   // Range noise in mm
   measurementNoise(1, 1) = 0.05;  // Bearing noise in radians
+
+  // Optionally seed the state from a previously stored landmark map so that
+  // tracking starts with already-known landmarks instead of discovering them.
+  LandmarkMap prior_map;
+  if (prior_map.load("landmark_map.csv")) {
+    ekf_real.setStateFromMap(state_real, prior_map);
+    std::cout << "Seeded state from landmark_map.csv (" << prior_map.size()
+              << " landmarks)" << std::endl;
+  }
 
   // Open output file and write header
   std::ofstream outFile("ekf_state_log.txt", std::ios::out | std::ios::trunc);
@@ -256,6 +266,16 @@ int main() {
   // Close output file
   outFile.close();
   std::cout << "State log written to ekf_state_log.txt" << std::endl;
+
+  // Store the final landmark estimates in a reloadable map container and
+  // persist them so a later run can reload them via LandmarkMap::load().
+  LandmarkMap landmark_map = ekf_real.getMapFromState(state_real);
+  if (landmark_map.save("landmark_map.csv")) {
+    std::cout << "Landmark map (" << landmark_map.size()
+              << " landmarks) written to landmark_map.csv" << std::endl;
+  } else {
+    std::cerr << "Error: Could not write landmark_map.csv" << std::endl;
+  }
 
   // Print the estimated state
   std::cout << "Estimated State: " << std::endl;
