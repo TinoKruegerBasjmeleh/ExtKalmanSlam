@@ -6,19 +6,19 @@
 
 class EKFSLAMTest : public ::testing::Test {
  protected:
-  EKFSLAM              ekf;
-  EKFSLAM::EKFState    state;
-  Eigen::Matrix3d      motionNoise;
-  Eigen::Matrix2d      measurementNoise;
+  EKFSLAM           ekf;
+  EKFSLAM::EKFState state;
+  Eigen::Matrix3d   motionNoise;
+  Eigen::Matrix2d   measurementNoise;
 
-  void SetUp() override {
+  void              SetUp() override {
     // Initialize state with robot at origin and NUM_LANDMARKS landmarks.
     // EKFSLAM::predict() builds STATE_SIZE x STATE_SIZE Jacobian/noise
     // matrices internally, so sigma must match STATE_SIZE exactly.
-    state.mu    = Eigen::VectorXd::Zero(EKFSLAM::STATE_SIZE);
-    state.sigma = Eigen::MatrixXd::Identity(EKFSLAM::STATE_SIZE,
-                                            EKFSLAM::STATE_SIZE) *
-                  0.1;
+    state.mu = Eigen::VectorXd::Zero(EKFSLAM::STATE_SIZE);
+    state.sigma =
+        Eigen::MatrixXd::Identity(EKFSLAM::STATE_SIZE, EKFSLAM::STATE_SIZE) *
+        0.1;
 
     // Small process noise
     motionNoise.setIdentity();
@@ -36,10 +36,10 @@ class EKFSLAMTest : public ::testing::Test {
 
 TEST_F(EKFSLAMTest, MotionModelStraightLine) {
   // Test straight-line motion (w ≈ 0)
-  Eigen::Vector3d     pose(0.0, 0.0, 0.0);
-  EKFSLAM::Control    u{1.0, 0.0, 1.0};  // v=1, w=0, dt=1
+  Eigen::Vector3d  pose(0.0, 0.0, 0.0);
+  EKFSLAM::Control u{1.0, 0.0, 1.0};  // v=1, w=0, dt=1
 
-  Eigen::Vector3d     new_pose = ekf.motionModel(pose, u);
+  Eigen::Vector3d  new_pose = ekf.motionModel(pose, u);
 
   // Should move forward 1 meter in x direction
   EXPECT_NEAR(new_pose(0), 1.0, 1e-5);
@@ -89,8 +89,8 @@ TEST_F(EKFSLAMTest, MotionJacobianStraightLine) {
   EXPECT_NEAR(G(2, 2), 1.0, 1e-5);
 
   // Check theta derivatives
-  double           expected_dx_dtheta = -u.v * u.dt * std::sin(pose(2));
-  double           expected_dy_dtheta = u.v * u.dt * std::cos(pose(2));
+  double expected_dx_dtheta = -u.v * u.dt * std::sin(pose(2));
+  double expected_dy_dtheta = u.v * u.dt * std::cos(pose(2));
   EXPECT_NEAR(G(0, 2), expected_dx_dtheta, 1e-5);
   EXPECT_NEAR(G(1, 2), expected_dy_dtheta, 1e-5);
 }
@@ -115,11 +115,11 @@ TEST_F(EKFSLAMTest, MotionJacobianCircularMotion) {
 // ============================================================================
 
 TEST_F(EKFSLAMTest, PredictUpdatesRobotPose) {
-  state.mu(0)          = 0.0;
-  state.mu(1)          = 0.0;
-  state.mu(2)          = 0.0;
+  state.mu(0)                = 0.0;
+  state.mu(1)                = 0.0;
+  state.mu(2)                = 0.0;
 
-  EKFSLAM::Control u   = {1.0, 0.0, 1.0};  // Move forward 1 meter
+  EKFSLAM::Control u         = {1.0, 0.0, 1.0};  // Move forward 1 meter
 
   Eigen::VectorXd  mu_before = state.mu;
 
@@ -137,9 +137,9 @@ TEST_F(EKFSLAMTest, PredictUpdatesRobotPose) {
 }
 
 TEST_F(EKFSLAMTest, PredictIncreasesUncertainty) {
-  Eigen::MatrixXd sigma_before = state.sigma;
+  Eigen::MatrixXd  sigma_before = state.sigma;
 
-  EKFSLAM::Control u           = {1.0, 0.0, 1.0};
+  EKFSLAM::Control u            = {1.0, 0.0, 1.0};
 
   ekf.predict(state, u, motionNoise);
 
@@ -169,9 +169,9 @@ TEST_F(EKFSLAMTest, RangeBearingObservationAtOrigin) {
 }
 
 TEST_F(EKFSLAMTest, RangeBearingObservationWithRotation) {
-  state.mu(0) = 0.0;           // x
-  state.mu(1) = 0.0;           // y
-  state.mu(2) = M_PI / 2.0;    // theta = 90°
+  state.mu(0) = 0.0;         // x
+  state.mu(1) = 0.0;         // y
+  state.mu(2) = M_PI / 2.0;  // theta = 90°
 
   // Measurement: range=5, bearing=0 (relative to robot heading)
   Eigen::Vector2d z(5.0, 0.0);
@@ -189,13 +189,13 @@ TEST_F(EKFSLAMTest, RangeBearingObservationWithRotation) {
 
 TEST_F(EKFSLAMTest, PredictLandmarkMeasurementSimple) {
   // Robot at origin
-  state.mu(0) = 0.0;
-  state.mu(1) = 0.0;
-  state.mu(2) = 0.0;
+  state.mu(0)           = 0.0;
+  state.mu(1)           = 0.0;
+  state.mu(2)           = 0.0;
 
   // Landmark 0 at (5, 0)
-  state.mu(3) = 5.0;
-  state.mu(4) = 0.0;
+  state.mu(3)           = 5.0;
+  state.mu(4)           = 0.0;
 
   Eigen::Vector2d z_hat = ekf.predictLandmarkMeasurement(state.mu, 0);
 
@@ -206,13 +206,13 @@ TEST_F(EKFSLAMTest, PredictLandmarkMeasurementSimple) {
 
 TEST_F(EKFSLAMTest, PredictLandmarkMeasurementWithOffset) {
   // Robot at (1, 1, 0)
-  state.mu(0) = 1.0;
-  state.mu(1) = 1.0;
-  state.mu(2) = 0.0;
+  state.mu(0)           = 1.0;
+  state.mu(1)           = 1.0;
+  state.mu(2)           = 0.0;
 
   // Landmark 0 at (4, 5)
-  state.mu(3) = 4.0;
-  state.mu(4) = 5.0;
+  state.mu(3)           = 4.0;
+  state.mu(4)           = 5.0;
 
   Eigen::Vector2d z_hat = ekf.predictLandmarkMeasurement(state.mu, 0);
 
@@ -229,11 +229,11 @@ TEST_F(EKFSLAMTest, PredictLandmarkMeasurementWithOffset) {
 // ============================================================================
 
 TEST_F(EKFSLAMTest, MeasurementJacobianDimensions) {
-  state.mu(0) = 0.0;
-  state.mu(1) = 0.0;
-  state.mu(2) = 0.0;
-  state.mu(3) = 5.0;
-  state.mu(4) = 5.0;
+  state.mu(0)                   = 0.0;
+  state.mu(1)                   = 0.0;
+  state.mu(2)                   = 0.0;
+  state.mu(3)                   = 5.0;
+  state.mu(4)                   = 5.0;
 
   Eigen::Matrix<double, 2, 5> H = ekf.measurementJacobian(state.mu, 0);
 
@@ -246,19 +246,19 @@ TEST_F(EKFSLAMTest, MeasurementJacobianDimensions) {
 }
 
 TEST_F(EKFSLAMTest, MeasurementJacobianValues) {
-  state.mu(0) = 0.0;
-  state.mu(1) = 0.0;
-  state.mu(2) = 0.0;
-  state.mu(3) = 3.0;
-  state.mu(4) = 4.0;
+  state.mu(0)                        = 0.0;
+  state.mu(1)                        = 0.0;
+  state.mu(2)                        = 0.0;
+  state.mu(3)                        = 3.0;
+  state.mu(4)                        = 4.0;
 
-  Eigen::Matrix<double, 2, 5> H = ekf.measurementJacobian(state.mu, 0);
+  Eigen::Matrix<double, 2, 5> H      = ekf.measurementJacobian(state.mu, 0);
 
   // For landmark at (3, 4) from origin: range=5, bearing=atan2(4,3)
-  double dx     = 3.0;
-  double dy     = 4.0;
-  double q      = dx * dx + dy * dy;  // 25
-  double sqrt_q = std::sqrt(q);       // 5
+  double                      dx     = 3.0;
+  double                      dy     = 4.0;
+  double                      q      = dx * dx + dy * dy;  // 25
+  double                      sqrt_q = std::sqrt(q);       // 5
 
   // Check range derivatives
   EXPECT_NEAR(H(0, 0), -dx / sqrt_q, 1e-5);  // ∂r/∂x = -3/5
@@ -332,17 +332,17 @@ TEST_F(EKFSLAMTest, UpdateInitializesNewLandmark) {
 
 TEST_F(EKFSLAMTest, UpdateRefinesLandmarkEstimate) {
   // Initialize robot and landmark with some uncertainty
-  state.mu(0)    = 0.0;
-  state.mu(1)    = 0.0;
-  state.mu(2)    = 0.0;
-  state.mu(3)    = 5.1;  // Landmark with small error
-  state.mu(4)    = 0.1;
-  state.sigma   *= 1.0;  // Higher initial uncertainty
+  state.mu(0) = 0.0;
+  state.mu(1) = 0.0;
+  state.mu(2) = 0.0;
+  state.mu(3) = 5.1;  // Landmark with small error
+  state.mu(4) = 0.1;
+  state.sigma *= 1.0;  // Higher initial uncertainty
 
   // Perfect measurement
   EKFSLAM::Measurement meas{0, Eigen::Vector2d(5.0, 0.0)};
 
-  Eigen::VectorXd mu_before = state.mu;
+  Eigen::VectorXd      mu_before = state.mu;
 
   ekf.update(state, meas, measurementNoise);
 
@@ -353,15 +353,17 @@ TEST_F(EKFSLAMTest, UpdateRefinesLandmarkEstimate) {
 
 TEST_F(EKFSLAMTest, UpdateReducesUncertainty) {
   // Initialize landmark
-  state.mu(3) = 5.0;
-  state.mu(4) = 0.0;
+  state.mu(3)                       = 5.0;
+  state.mu(4)                       = 0.0;
 
-  Eigen::MatrixXd sigma_before = state.sigma;
+  Eigen::MatrixXd      sigma_before = state.sigma;
 
   // Get a measurement
   EKFSLAM::Measurement meas{0, Eigen::Vector2d(5.0, 0.0)};
 
-  ekf.update(state, meas, measurementNoise);
+  // Update with measurement and force loop closure  to update also the
+  // covariance of the robot
+  ekf.update(state, meas, measurementNoise, true);
 
   // Robot uncertainty should decrease
   double robot_variance_before = sigma_before.block<3, 3>(0, 0).trace();
@@ -376,9 +378,8 @@ TEST_F(EKFSLAMTest, UpdateReducesUncertainty) {
 TEST_F(EKFSLAMTest, FullEKFCycle) {
   // Start at origin
   state.mu.setZero();
-  state.sigma = Eigen::MatrixXd::Identity(EKFSLAM::STATE_SIZE,
-                                          EKFSLAM::STATE_SIZE) *
-                0.1;
+  state.sigma =
+      Eigen::MatrixXd::Identity(EKFSLAM::STATE_SIZE, EKFSLAM::STATE_SIZE) * 0.1;
 
   // Step 1: Move forward
   EKFSLAM::Control u1{1.0, 0.0, 1.0};
@@ -399,7 +400,7 @@ TEST_F(EKFSLAMTest, FullEKFCycle) {
   ekf.predict(state, u2, motionNoise);
 
   // Step 4: Observe landmark 0 again
-  Eigen::Vector2d z_hat = ekf.predictLandmarkMeasurement(state.mu, 0);
+  Eigen::Vector2d      z_hat = ekf.predictLandmarkMeasurement(state.mu, 0);
   EKFSLAM::Measurement meas2{0, z_hat};  // Use predicted measurement
   ekf.update(state, meas2, measurementNoise);
 
@@ -409,7 +410,8 @@ TEST_F(EKFSLAMTest, FullEKFCycle) {
 
   // Covariance should be positive semi-definite
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(state.sigma);
-  EXPECT_GE(es.eigenvalues().minCoeff(), -1e-10);  // Allow small numerical errors
+  EXPECT_GE(es.eigenvalues().minCoeff(), -1e-10);  // Allow small numerical
+                                                   // errors
 }
 
 TEST_F(EKFSLAMTest, LandmarkIndexHelper) {
@@ -419,8 +421,8 @@ TEST_F(EKFSLAMTest, LandmarkIndexHelper) {
 }
 
 TEST_F(EKFSLAMTest, LandmarkPoseRetrieval) {
-  state.mu(3) = 10.0;
-  state.mu(4) = 20.0;
+  state.mu(3)             = 10.0;
+  state.mu(4)             = 20.0;
 
   Eigen::Vector2d lm_pose = ekf.landmarkPose(state, 0);
 
@@ -446,8 +448,8 @@ TEST_F(EKFSLAMTest, ZeroVelocityMotion) {
 
 TEST_F(EKFSLAMTest, SmallAngularVelocityUsesLinearApproximation) {
   Eigen::Vector3d  pose(0.0, 0.0, 0.0);
-  EKFSLAM::Control u1{1.0, 1e-6, 1.0};   // Very small ω (should use linear)
-  EKFSLAM::Control u2{1.0, 0.0, 1.0};    // Zero ω (definitely linear)
+  EKFSLAM::Control u1{1.0, 1e-6, 1.0};  // Very small ω (should use linear)
+  EKFSLAM::Control u2{1.0, 0.0, 1.0};   // Zero ω (definitely linear)
 
   Eigen::Vector3d  result1 = ekf.motionModel(pose, u1);
   Eigen::Vector3d  result2 = ekf.motionModel(pose, u2);
@@ -459,11 +461,11 @@ TEST_F(EKFSLAMTest, SmallAngularVelocityUsesLinearApproximation) {
 
 TEST_F(EKFSLAMTest, LandmarkAtRobotPositionStability) {
   // Edge case: landmark very close to robot
-  state.mu(0) = 0.0;
-  state.mu(1) = 0.0;
-  state.mu(2) = 0.0;
-  state.mu(3) = 0.001;
-  state.mu(4) = 0.001;
+  state.mu(0)                   = 0.0;
+  state.mu(1)                   = 0.0;
+  state.mu(2)                   = 0.0;
+  state.mu(3)                   = 0.001;
+  state.mu(4)                   = 0.001;
 
   // Should still compute valid Jacobian
   Eigen::Matrix<double, 2, 5> H = ekf.measurementJacobian(state.mu, 0);
