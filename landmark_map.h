@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <limits>
 
 /****************************************************************************
  * @brief Landmark
@@ -15,22 +16,23 @@
  * flag recording whether the landmark has actually been observed yet.
  * ***************************************************************************/
 struct Landmark {
-  int    id       = -1;     // Stable landmark identifier
-  double x        = 0.0;    // Global x position
-  double y        = 0.0;    // Global y position
-  double std_x    = 0.0;    // Standard deviation of x
-  double std_y    = 0.0;    // Standard deviation of y
-  bool   observed = false;  // Whether the landmark has been observed
+  int    id        = -1;  // Stable landmark identifier
+  double x         = std::numeric_limits<double>::max();  // Global x position
+  double y         = std::numeric_limits<double>::max();  // Global y position
+  double std_x     = 0.0;  // Standard deviation of x
+  double std_y     = 0.0;  // Standard deviation of y
+  long   timestamp = 0;    // Timestamp of the observation in ms, 0 means never
+                           // observed
 
-  Landmark()      = default;
+  Landmark()       = default;
   Landmark(int id_, double x_, double y_, double std_x_ = 0.0,
-           double std_y_ = 0.0, bool observed_ = true)
+           double std_y_ = 0.0, long timestamp_ = 0)
       : id(id_),
         x(x_),
         y(y_),
         std_x(std_x_),
         std_y(std_y_),
-        observed(observed_) {}
+        timestamp(timestamp_) {}
 
   Eigen::Vector2d position() const { return Eigen::Vector2d(x, y); }
 };
@@ -52,8 +54,8 @@ class LandmarkMap {
   }
 
   void addLandmark(int id, double x, double y, double std_x = 0.0,
-                   double std_y = 0.0, bool observed = true) {
-    landmarks_[id] = Landmark(id, x, y, std_x, std_y, observed);
+                   double std_y = 0.0, long timestamp = 0) {
+    landmarks_[id] = Landmark(id, x, y, std_x, std_y, timestamp);
   }
 
   // --------------------------------------------------------------- remove
@@ -78,7 +80,7 @@ class LandmarkMap {
   }
 
   // Non-owning pointer to the stored landmark, or nullptr if absent.
-  const Landmark* find(int id) const {
+  Landmark* find(int id) {
     auto it = landmarks_.find(id);
     return it == landmarks_.end() ? nullptr : &it->second;
   }
@@ -105,6 +107,21 @@ class LandmarkMap {
   size_t size() const { return landmarks_.size(); }
   bool   empty() const { return landmarks_.empty(); }
 
+  // ------------------------------------------------------------- iteration
+  // Direct, copy-free iteration over the stored (id -> Landmark) entries,
+  // ordered by id. Enables range-based for and STL algorithms, e.g.
+  //   for (const auto& [id, lm] : map) { ... }
+  using iterator       = std::map<int, Landmark>::iterator;
+  using const_iterator = std::map<int, Landmark>::const_iterator;
+
+  iterator       begin() { return landmarks_.begin(); }
+  iterator       end() { return landmarks_.end(); }
+  const_iterator begin() const { return landmarks_.begin(); }
+  const_iterator end() const { return landmarks_.end(); }
+  const_iterator cbegin() const { return landmarks_.cbegin(); }
+  const_iterator cend() const { return landmarks_.cend(); }
+  Landmark&      operator[](int id) { return landmarks_[id]; }
+
   // ---------------------------------------------------------- serialization
   /**************************************************************************
    * @brief save
@@ -112,16 +129,16 @@ class LandmarkMap {
    * @param path destination file path
    * @return true on success, false if the file could not be written
    * ************************************************************************/
-  bool   save(const std::string& path) const {
+  bool           save(const std::string& path) const {
     std::ofstream file(path, std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
       return false;
     }
-    file << "id,x,y,std_x,std_y,observed\n";
+    file << "id,x,y,std_x,std_y,timestamp\n";
     for (const auto& entry : landmarks_) {
       const Landmark& lm = entry.second;
       file << lm.id << "," << lm.x << "," << lm.y << "," << lm.std_x << ","
-           << lm.std_y << "," << (lm.observed ? 1 : 0) << "\n";
+           << lm.timestamp << "\n";
     }
     return static_cast<bool>(file);
   }
@@ -161,7 +178,7 @@ class LandmarkMap {
       if (!std::getline(ss, token, ',')) continue;
       lm.std_y = std::stod(token);
       if (std::getline(ss, token, ',')) {
-        lm.observed = (std::stoi(token) != 0);
+        lm.timestamp = std::stol(token);
       }
 
       landmarks_[lm.id] = lm;
