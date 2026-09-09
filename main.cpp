@@ -24,31 +24,30 @@ void printState(const EKFSLAM::EKFState& state) {
 }
 
 // Write one EKF state block (pose + landmarks) into the already-open row.
-static void writeStateBlock(std::ofstream& file, EKFSLAM& ekf,
-                            const EKFSLAM::EKFState& state) {
-  EKFSLAM::Variances var = ekf.getVariances(state);
+static void writeStateBlock(std::ofstream& file, EKFSLAM& ekf) {
+  EKFSLAM::Variances var = ekf.getVariances();
 
   // Robot pose
-  file << "," << state.mu(0) << "," << state.mu(1) << "," << state.mu(2);
+  file << "," << ekf.getRobotPose().x << "," << ekf.getRobotPose().y << ","
+       << ekf.getRobotPose().rho;
   // Robot standard deviations
   file << "," << std::sqrt(var.robot(0)) << "," << std::sqrt(var.robot(1))
-       << "," << std::sqrt(state.sigma(2, 2));
+       << "," << std::sqrt(var.robot(2));
 
   // Landmark poses and standard deviations
   for (size_t i = 0; i < var.landmarks.size(); ++i) {
-    int idx = ekf.landmarkIndex(i);
-    file << "," << state.mu(idx) << "," << state.mu(idx + 1);
+    Eigen::Vector2d lm_pos = ekf.landmarkPose(i);
+    file << "," << lm_pos[0] << "," << lm_pos[1];
     file << "," << std::sqrt(var.landmarks[i](0)) << ","
          << std::sqrt(var.landmarks[i](1));
   }
 }
 
 void writeStateToFile(std::ofstream& file, double time, EKFSLAM& ekf_ideal,
-                      const EKFSLAM::EKFState& state_ideal, EKFSLAM& ekf_noisy,
-                      const EKFSLAM::EKFState& state_noisy) {
+                      EKFSLAM& ekf_noisy) {
   file << time;
-  writeStateBlock(file, ekf_ideal, state_ideal);
-  writeStateBlock(file, ekf_noisy, state_noisy);
+  writeStateBlock(file, ekf_ideal);
+  writeStateBlock(file, ekf_noisy);
   file << std::endl;
 }
 
@@ -93,21 +92,10 @@ int main() {
   Pose                   pos_m4{700, 500, 0}, pos_m4_in_robot{};
   TMat                   tm_robot_in_world{};
   TMat                   tm_robot_in_world_inv{};
-  EKFSLAM                ekf, ekf_real;
-  EKFSLAM::EKFState      state{}, state_real{};
+  EKFSLAM                ekf{}, ekf_real{};
   Eigen::Matrix3d        motionNoise;
   Eigen::Matrix2d        measurementNoise;
 
-  // Initialize state with robot at origin and two landmarks
-  state.mu      = Eigen::VectorXd::Zero(EKFSLAM::STATE_SIZE);  // [x, y, theta,
-                                                               // lm1_x, lm1_y,
-                                                               // lm2_x, lm2_y,
-                                                               // lm3_x, lm3_y,
-                                                               // lm4_x, lm4_y]
-  state_real.mu = state.mu;
-  state.sigma =
-      Eigen::MatrixXd::Identity(EKFSLAM::STATE_SIZE, EKFSLAM::STATE_SIZE) * 0.1;
-  state_real.sigma = state.sigma;
   // Small process noise
   motionNoise.setIdentity();
   motionNoise(0, 0) *= 2.0;   // Robot x noise in mm
@@ -123,7 +111,7 @@ int main() {
   // tracking starts with already-known landmarks instead of discovering them.
   LandmarkMap prior_map;
   if (prior_map.load("landmark_map.csv")) {
-    ekf_real.setStateFromMap(state_real, prior_map);
+    ekf_real.setStateFromMap(prior_map);
     std::cout << "Seeded state from landmark_map.csv (" << prior_map.size()
               << " landmarks)" << std::endl;
   }
@@ -151,18 +139,11 @@ int main() {
              ",noisy_robot_std_x,noisy_robot_std_y,noisy_robot_std_theta";
   writeLmHeader("noisy_");
   outFile << std::endl;
-  bool observe_m1           = false;
-  bool observe_m2           = false;
-  bool observe_m3           = false;
-  bool observe_m4           = false;
-  auto observe_loop_closure = [](bool landmark) -> bool {
-    bool edge_raised = !landmark;  // Edge is raised if the landmark was
-                                   // previously unobserved while being in the
-                                   // update step
-    return edge_raised;
-  };
+  long timestamp = 0;  // in milliseconds
 
-  for (float t = 0.0; t < 250.0; t += 0.1) {
+  for (float t = 0.0; t < 250.0; t += dt) {
+    timestamp += static_cast<long>(dt * 1000);  // Update timestamp in
+                                                // milliseconds
     double noise_v = getRandomDouble(-measurementNoise(0, 0),
                                      measurementNoise(0, 0));  // Linear
                                                                // velocity noise
@@ -188,59 +169,50 @@ int main() {
     double dist_m3 = calcDist(pos_m3_in_robot);
     double dist_m4 = calcDist(pos_m4_in_robot);
 
-    ekf.predict(state, control, motionNoise);
-    ekf_real.predict(state_real, control_real, motionNoise);
+    ekf.predict(control, motionNoise);
+    ekf_real.predict(control_real, motionNoise);
 
     if (dist_m1 < measurement_range) {
       EKFSLAM::Measurement meas1{
-          0, Eigen::Vector2d(dist_m1,
-                             std::atan2(pos_m1_in_robot.y, pos_m1_in_robot.x))};
+          -1,
+          Eigen::Vector2d(dist_m1,
+                          std::atan2(pos_m1_in_robot.y, pos_m1_in_robot.x)),
+          timestamp};
       // ekf.update(state, meas1, measurementNoise); // Update with ideal
       // measurement not needed
-      ekf_real.update(state_real, meas1, measurementNoise,
-                      observe_loop_closure(observe_m1));
-      observe_m1 = true;
-    } else {
-      observe_m1 = false;
+      ekf_real.update(meas1, measurementNoise);
     }
 
     if (dist_m2 < measurement_range) {
       EKFSLAM::Measurement meas2{
-          1, Eigen::Vector2d(dist_m2,
-                             std::atan2(pos_m2_in_robot.y, pos_m2_in_robot.x))};
+          -1,
+          Eigen::Vector2d(dist_m2,
+                          std::atan2(pos_m2_in_robot.y, pos_m2_in_robot.x)),
+          timestamp};
       // ekf.update(state, meas2, measurementNoise); // Update with ideal
       // measurement not needed
-      ekf_real.update(state_real, meas2, measurementNoise,
-                      observe_loop_closure(observe_m2));
-      observe_m2 = true;
-    } else {
-      observe_m2 = false;
+      ekf_real.update(meas2, measurementNoise);
     }
 
     if (dist_m3 < measurement_range) {
       EKFSLAM::Measurement meas3{
-          2, Eigen::Vector2d(dist_m3,
-                             std::atan2(pos_m3_in_robot.y, pos_m3_in_robot.x))};
+          -1,
+          Eigen::Vector2d(dist_m3,
+                          std::atan2(pos_m3_in_robot.y, pos_m3_in_robot.x)),
+          timestamp};
       // ekf.update(state, meas3, measurementNoise); // Update with ideal
       // measurement not needed
-      ekf_real.update(state_real, meas3, measurementNoise,
-                      observe_loop_closure(observe_m3));
-      observe_m3 = true;
-    } else {
-      observe_m3 = false;
+      ekf_real.update(meas3, measurementNoise);
     }
 
     if (dist_m4 < measurement_range) {
       EKFSLAM::Measurement meas4{
-          3, Eigen::Vector2d(dist_m4,
-                             std::atan2(pos_m4_in_robot.y, pos_m4_in_robot.x))};
-      // ekf.update(state, meas4, measurementNoise); // Update with ideal
+          -1,
+          Eigen::Vector2d(dist_m4,
+                          std::atan2(pos_m4_in_robot.y, pos_m4_in_robot.x)),
+          timestamp};
       // measurement not needed
-      ekf_real.update(state_real, meas4, measurementNoise,
-                      observe_loop_closure(observe_m4));
-      observe_m4 = true;
-    } else {
-      observe_m4 = false;
+      ekf_real.update(meas4, measurementNoise);
     }
 
     std::cout << "Time: " << t << "s, Position: (" << pos_robot.x << ", "
@@ -260,7 +232,7 @@ int main() {
               << " degrees" << "  noise: " << noise_v << std::endl;
 
     // Write state to file (ideal first, then noisy)
-    writeStateToFile(outFile, t, ekf, state, ekf_real, state_real);
+    writeStateToFile(outFile, t, ekf, ekf_real);
   }
 
   // Close output file
@@ -269,7 +241,7 @@ int main() {
 
   // Store the final landmark estimates in a reloadable map container and
   // persist them so a later run can reload them via LandmarkMap::load().
-  LandmarkMap landmark_map = ekf_real.getMapFromState(state_real);
+  LandmarkMap landmark_map = ekf_real.getLandmarkMap();
   if (landmark_map.save("landmark_map.csv")) {
     std::cout << "Landmark map (" << landmark_map.size()
               << " landmarks) written to landmark_map.csv" << std::endl;
