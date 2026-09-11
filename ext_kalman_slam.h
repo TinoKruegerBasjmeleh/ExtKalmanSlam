@@ -73,8 +73,8 @@ class EKFSLAM {
     lm.timestamp                 = meas.timestamp;
     lm.x                         = landmark_pos[0];
     lm.y                         = landmark_pos[1];
-    lm.std_x                     = var.landmarks[assoziated_id](0);
-    lm.std_y                     = var.landmarks[assoziated_id](1);
+    lm.std_x                     = sqrt(var.landmarks[assoziated_id](0));
+    lm.std_y                     = sqrt(var.landmarks[assoziated_id](1));
     map_[assoziated_id]          = lm;
     return true;
   }
