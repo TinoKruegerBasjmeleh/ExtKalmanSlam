@@ -202,10 +202,12 @@ class EKFSLAM {
     H.setZero();
     H = measurementJacobian(state.mu, landmarkId);
 
-    Eigen::Matrix<double, 5, 5> sigma_sub      = state.sigma.block<5, 5>(0, 0);
-    Eigen::Matrix2d             sigma_landmark = state.sigma.block<2, 2>(
-        landmarkIndex(landmarkId), landmarkIndex(landmarkId));
-    sigma_sub.block<2, 2>(3, 3) = sigma_landmark;
+    const int                  lm_idx = landmarkIndex(landmarkId);
+    Eigen::Matrix<double, 5, 5> sigma_sub;
+    sigma_sub.block<3, 3>(0, 0) = state.sigma.block<3, 3>(0, 0);
+    sigma_sub.block<3, 2>(0, 3) = state.sigma.block<3, 2>(0, lm_idx);
+    sigma_sub.block<2, 3>(3, 0) = state.sigma.block<2, 3>(lm_idx, 0);
+    sigma_sub.block<2, 2>(3, 3) = state.sigma.block<2, 2>(lm_idx, lm_idx);
     // 4. Innovation covariance
     Eigen::Matrix2d S = H * sigma_sub * H.transpose() + Q;  // Is Q ododmetey
                                                             // and measurement
