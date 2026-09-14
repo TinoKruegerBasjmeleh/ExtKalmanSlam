@@ -140,7 +140,14 @@ class EKFSLAM {
 
   LandmarkMap getLandmarkMap() { return map_; }
 
-  void setStateFromMap(const LandmarkMap& map) { setStateFromMap(state_, map); }
+  void setStateFromMap(const LandmarkMap& map) {
+    for (const Landmark& lm : map.getAll()) {
+      if (lm.id >= 0 && static_cast<size_t>(lm.id) < NUM_LANDMARKS) {
+        map_[lm.id] = lm;
+      }
+    }
+    setStateFromMap(state_, map);
+  }
   void setInitialPos(const Eigen::Vector3d& initialPos,
                      const Eigen::Matrix3d& initialCov) {
     setInitialPos(state_, initialPos, initialCov);
