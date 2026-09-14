@@ -84,6 +84,10 @@ class LandmarkMap {
     auto it = landmarks_.find(id);
     return it == landmarks_.end() ? nullptr : &it->second;
   }
+  const Landmark* find(int id) const {
+    auto it = landmarks_.find(id);
+    return it == landmarks_.end() ? nullptr : &it->second;
+  }
 
   // Snapshot of every landmark, ordered by id.
   std::vector<Landmark> getAll() const {
