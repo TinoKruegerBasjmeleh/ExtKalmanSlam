@@ -138,7 +138,7 @@ class LandmarkMap {
     for (const auto& entry : landmarks_) {
       const Landmark& lm = entry.second;
       file << lm.id << "," << lm.x << "," << lm.y << "," << lm.std_x << ","
-           << lm.timestamp << "\n";
+           << lm.std_y << "," << lm.timestamp << "\n";
     }
     return static_cast<bool>(file);
   }
