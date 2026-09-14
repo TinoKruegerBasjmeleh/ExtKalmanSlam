@@ -87,7 +87,18 @@ class EKFSLAM {
   Eigen::Vector2d landmarkPose(int landmark_id) {
     return landmarkPose(state_, landmark_id);
   }
-  Variances getVariances() { return getVariances(state_); }
+  Variances                   getVariances() { return getVariances(state_); }
+
+  /**
+   * @brief robotLandmarkCrossCovariance
+   * The 3x2 covariance block coupling the robot pose to one landmark. Exposed
+   * so that callers (and tests) can verify the filter actually maintains these
+   * correlations, which is what distinguishes EKF-SLAM from a set of
+   * independent per-landmark filters.
+   */
+  Eigen::Matrix<double, 3, 2> robotLandmarkCrossCovariance(int landmark_id) {
+    return state_.sigma.block<3, 2>(0, landmarkIndex(landmark_id));
+  }
 
   /**
    * @brief getAssociatedLandmarkId
@@ -98,7 +109,7 @@ class EKFSLAM {
    * @return The ID of the associated landmark, or -1 if no suitable match is
    * found.
    */
-  int       getAssociatedLandmarkId(Measurement& meas) {
+  int getAssociatedLandmarkId(Measurement& meas) {
     const double          r   = meas.z[0];
     const double          phi = meas.z[1];
     // Robot-relative landmark position, using the same (cos, sin) convention
@@ -140,7 +151,7 @@ class EKFSLAM {
 
   LandmarkMap getLandmarkMap() { return map_; }
 
-  void setStateFromMap(const LandmarkMap& map) {
+  void        setStateFromMap(const LandmarkMap& map) {
     for (const Landmark& lm : map.getAll()) {
       if (lm.id >= 0 && static_cast<size_t>(lm.id) < NUM_LANDMARKS) {
         map_[lm.id] = lm;
@@ -201,29 +212,31 @@ class EKFSLAM {
     Eigen::Matrix<double, 2, 5> H(2, 5);
     H.setZero();
     H = measurementJacobian(state.mu, landmarkId);
-
-    const int                  lm_idx = landmarkIndex(landmarkId);
+    const int                   lm_idx = landmarkIndex(landmarkId);
     Eigen::Matrix<double, 5, 5> sigma_sub;
     sigma_sub.block<3, 3>(0, 0) = state.sigma.block<3, 3>(0, 0);
     sigma_sub.block<3, 2>(0, 3) = state.sigma.block<3, 2>(0, lm_idx);
     sigma_sub.block<2, 3>(3, 0) = state.sigma.block<2, 3>(lm_idx, 0);
     sigma_sub.block<2, 2>(3, 3) = state.sigma.block<2, 2>(lm_idx, lm_idx);
     // 4. Innovation covariance
-    Eigen::Matrix2d S = H * sigma_sub * H.transpose() + Q;  // Is Q ododmetey
+    Eigen::Matrix2d S = H * sigma_sub * H.transpose() + Q;  // Is Q
+                                                            // ododmetey
                                                             // and measurement
                                                             // noise? Yes, it's
                                                             // the measurement
                                                             // noise covariance
-
     // 5. Kalman gain
     Eigen::Matrix<double, 5, 2> K = sigma_sub * H.transpose() * S.inverse();
 
     // 6. State update
+    // state.mu += K * y;
     state.mu(0) += K(0, 0) * y(0) + K(0, 1) * y(1);
     state.mu(1) += K(1, 0) * y(0) + K(1, 1) * y(1);
     state.mu(2) += K(2, 0) * y(0) + K(2, 1) * y(1);
     state.mu(landmarkIndex(landmarkId)) += K(3, 0) * y(0) + K(3, 1) * y(1);
     state.mu(landmarkIndex(landmarkId) + 1) += K(4, 0) * y(0) + K(4, 1) * y(1);
+
+    state.mu(2) = AngleTool::normaliseAngleSym0(state.mu(2));
 
     if (!detect_loop_closure) {
       return;
@@ -236,6 +249,8 @@ class EKFSLAM {
     state.sigma.block<2, 2>(landmarkIndex(landmarkId),
                             landmarkIndex(landmarkId)) =
         sigma_sub.block<2, 2>(3, 3);
+
+    state.sigma = 0.5 * (state.sigma + state.sigma.transpose()).eval();
   }
 
   void setInitialPos(EKFState& state, const Eigen::Vector3d& initialPos,
@@ -504,6 +519,7 @@ class EKFSLAM {
 
     state.mu(idx)     = lm_x;
     state.mu(idx + 1) = lm_y;
+
     // Initialize landmark covariance
     state.sigma.block<2, 2>(idx, idx) =
         Q + state.sigma.block<2, 2>(0, 0);  // Add robot pose uncertainty to
