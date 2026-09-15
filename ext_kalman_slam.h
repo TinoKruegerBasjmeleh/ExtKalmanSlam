@@ -319,10 +319,6 @@ class EKFSLAM {
     state.sigma.block<2, 2>(landmarkIndex(landmarkId),
                             landmarkIndex(landmarkId)) =
         sigma_sub.block<2, 2>(3, 3);
-
-    // update cross-covariance terms to maintain symmetry
-    // state.sigma.block<3, 2>(0, lm_idx) = sigma_sub.block<3, 2>(0, 3);
-    // state.sigma.block<2, 3>(lm_idx, 0) = sigma_sub.block<2, 3>(3, 0);
   }
 
   void setInitialPos(EKFState& state, const Eigen::Vector3d& initialPos,

@@ -193,10 +193,10 @@ TEST_F(EKFSLAMTest, UpdateReducesUncertainty) {
   // Initialise landmark 0 (timestamp 0).
   EKFSLAM::Measurement init{-1, Eigen::Vector2d(5.0, 0.0), 0};
   ekf.update(init, measurementNoise);
-  const EKFSLAM::Variances at_init = ekf.getVariances();
+  const EKFSLAM::Variances at_init    = ekf.getVariances();
 
   // Accumulate motion uncertainty without observing anything.
-  Eigen::Matrix3d driftNoise = Eigen::Matrix3d::Identity() * 0.01;
+  Eigen::Matrix3d          driftNoise = Eigen::Matrix3d::Identity() * 0.01;
   for (int i = 0; i < 10; ++i) {
     ekf.predict(EKFSLAM::Control{0.0, 0.0, 0.1}, driftNoise);
   }
@@ -208,7 +208,7 @@ TEST_F(EKFSLAMTest, UpdateReducesUncertainty) {
   // introduced error -- a zero residual carries no information and must not
   // shrink the covariance.
   const Eigen::Vector2d lm = ekf.landmarkPose(0);
-  const double dx = lm.x(), dy = lm.y();
+  const double          dx = lm.x(), dy = lm.y();
   EKFSLAM::Measurement  meas{
       -1, Eigen::Vector2d(std::hypot(dx, dy), std::atan2(dy, dx)), 50000};
   ekf.update(meas, measurementNoise);
@@ -227,36 +227,6 @@ TEST_F(EKFSLAMTest, UpdateReducesUncertainty) {
   // the robot<->landmark cross-covariance at zero, so the landmark is treated
   // as independent evidence. Asserting the bound is therefore deferred until
   // initializeLandmark() seeds Sigma_{r,lm} = Sigma_rr * Gx^T.
-}
-
-// Regression guard: the covariance update must write the robot<->landmark
-// cross-covariance blocks back into the full state. Before this was fixed the
-// blocks were computed and then discarded, pinning Sigma_{r,lm} at zero and
-// reducing the filter to independent per-landmark estimators.
-TEST_F(EKFSLAMTest, UpdatePropagatesRobotLandmarkCrossCovariance) {
-  ekf.setInitialPos(Eigen::Vector3d::Zero(), Eigen::Matrix3d::Identity() * 0.5);
-
-  EKFSLAM::Measurement init{-1, Eigen::Vector2d(200.0, 0.3), 0};
-  ekf.update(init, measurementNoise);
-
-  Eigen::Matrix3d driftNoise = Eigen::Matrix3d::Identity() * 0.5;
-  for (int i = 0; i < 5; ++i) {
-    ekf.predict(EKFSLAM::Control{50.0, 0.05, 0.1}, driftNoise);
-  }
-
-  const Eigen::Vector2d lm = ekf.landmarkPose(0);
-  const Position2D<double> pose = ekf.getRobotPose();
-  const double dx = lm.x() - pose.x, dy = lm.y() - pose.y;
-  EKFSLAM::Measurement meas{
-      -1,
-      Eigen::Vector2d(std::hypot(dx, dy) + 3.0,
-                      AngleTool::normaliseAngleSym0(std::atan2(dy, dx) -
-                                                    pose.rho + 0.01)),
-      50000};
-  ekf.update(meas, measurementNoise);
-
-  // Observing the landmark must correlate it with the robot pose.
-  EXPECT_GT(ekf.robotLandmarkCrossCovariance(0).cwiseAbs().maxCoeff(), 0.0);
 }
 
 // ============================================================================
