@@ -5,6 +5,8 @@
 #include <cmath>
 #include <vector>
 #include <iostream>
+#include <fstream>
+#include <string>
 
 #include "angle_tool.h"
 #include "cotrans.h"
@@ -166,6 +168,65 @@ class EKFSLAM {
 
   inline int landmarkIndex(int id) { return 3 + 2 * id; }
 
+  /****************************************************************************
+   * @brief writeStateBlock
+   * Write this instance's pose + landmark estimates as CSV fields (each field
+   * prefixed with a comma). Variances are written as covariance diagonal
+   * elements; the consumer (animate_ekf.py) applies sqrt() before use.
+   * @param out the output stream to write to
+   * ***************************************************************************/
+  void       writeStateBlock(std::ofstream& out) {
+    Position2D<double> pose = getRobotPose();
+    Variances          var  = getVariances();
+    out << "," << pose.x << "," << pose.y << "," << pose.rho << ","
+        << sqrt(var.robot(0)) << "," << sqrt(var.robot(1));
+    for (size_t i = 0; i < NUM_LANDMARKS; ++i) {
+      Eigen::Vector2d p = landmarkPose(static_cast<int>(i));
+      out << "," << p.x() << "," << p.y() << "," << sqrt(var.landmarks[i](0))
+          << "," << sqrt(var.landmarks[i](1));
+    }
+  }
+
+  /****************************************************************************
+   * @brief writeStateToFile
+   * Write a full CSV row: time, ideal state block, then noisy state block.
+   * @param out the output stream to write to
+   * @param time the current simulation time
+   * @param ideal the EKF driven by noise-free control
+   * @param noisy the EKF driven by noisy control and corrected by measurements
+   * ***************************************************************************/
+  static void writeStateToFile(std::ofstream& out, double time, EKFSLAM& ideal,
+                               EKFSLAM& noisy) {
+    out << time;
+    ideal.writeStateBlock(out);
+    noisy.writeStateBlock(out);
+    out << "\n";
+  }
+
+  /****************************************************************************
+   * @brief writeHeader
+   * Write the CSV header — ideal (undisturbed) columns first, then noisy
+   * columns (prefixed with "noisy_"). Column layout must stay in sync with
+   * animate_ekf.py.
+   * @param out the output stream to write to
+   * ***************************************************************************/
+  static void writeHeader(std::ofstream& out) {
+    auto writeLmHeader = [&](const std::string& prefix) {
+      out << "," << prefix << "robot_x" << "," << prefix << "robot_y" << ","
+          << prefix << "robot_theta" << "," << prefix << "robot_std_x" << ","
+          << prefix << "robot_std_y";
+      for (size_t i = 0; i < NUM_LANDMARKS; ++i) {
+        out << "," << prefix << "lm" << i << "_x" << "," << prefix << "lm" << i
+            << "_y" << "," << prefix << "lm" << i << "_std_x" << "," << prefix
+            << "lm" << i << "_std_y";
+      }
+    };
+    out << "time";
+    writeLmHeader("");
+    writeLmHeader("noisy_");
+    out << "\n";
+  }
+
  private:
   LandmarkMap map_{};
   EKFState    state_{};
@@ -214,10 +275,20 @@ class EKFSLAM {
     H = measurementJacobian(state.mu, landmarkId);
     const int                   lm_idx = landmarkIndex(landmarkId);
     Eigen::Matrix<double, 5, 5> sigma_sub;
+    sigma_sub.setZero();
+    // Extract the relevant submatrix of the covariance for the robot (3x3
+    // block)
     sigma_sub.block<3, 3>(0, 0) = state.sigma.block<3, 3>(0, 0);
-    sigma_sub.block<3, 2>(0, 3) = state.sigma.block<3, 2>(0, lm_idx);
-    sigma_sub.block<2, 3>(3, 0) = state.sigma.block<2, 3>(lm_idx, 0);
+    // Extract the relevant submatrix of the covariance for the landmark (2x2
+    // block)
     sigma_sub.block<2, 2>(3, 3) = state.sigma.block<2, 2>(lm_idx, lm_idx);
+
+    // Extract the cross-covariance between the robot and the landmark (3x2
+    // block)
+    // sigma_sub.block<3, 2>(0, 3) = state.sigma.block<3, 2>(0, lm_idx);
+    // sigma_sub.block<2, 3>(3, 0) = state.sigma.block<2, 3>(lm_idx, 0);
+    // Now sigma_sub contains the relevant 5x5 submatrix for the robot and the
+    // landmark
     // 4. Innovation covariance
     Eigen::Matrix2d S = H * sigma_sub * H.transpose() + Q;  // Is Q
                                                             // ododmetey
@@ -229,7 +300,6 @@ class EKFSLAM {
     Eigen::Matrix<double, 5, 2> K = sigma_sub * H.transpose() * S.inverse();
 
     // 6. State update
-    // state.mu += K * y;
     state.mu(0) += K(0, 0) * y(0) + K(0, 1) * y(1);
     state.mu(1) += K(1, 0) * y(0) + K(1, 1) * y(1);
     state.mu(2) += K(2, 0) * y(0) + K(2, 1) * y(1);
@@ -250,7 +320,9 @@ class EKFSLAM {
                             landmarkIndex(landmarkId)) =
         sigma_sub.block<2, 2>(3, 3);
 
-    state.sigma = 0.5 * (state.sigma + state.sigma.transpose()).eval();
+    // update cross-covariance terms to maintain symmetry
+    // state.sigma.block<3, 2>(0, lm_idx) = sigma_sub.block<3, 2>(0, 3);
+    // state.sigma.block<2, 3>(lm_idx, 0) = sigma_sub.block<2, 3>(3, 0);
   }
 
   void setInitialPos(EKFState& state, const Eigen::Vector3d& initialPos,

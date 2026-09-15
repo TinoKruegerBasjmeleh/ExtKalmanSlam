@@ -23,34 +23,6 @@ void printState(const EKFSLAM::EKFState& state) {
             << state.sigma << std::endl;
 }
 
-// Write one EKF state block (pose + landmarks) into the already-open row.
-static void writeStateBlock(std::ofstream& file, EKFSLAM& ekf) {
-  EKFSLAM::Variances var = ekf.getVariances();
-
-  // Robot pose
-  file << "," << ekf.getRobotPose().x << "," << ekf.getRobotPose().y << ","
-       << ekf.getRobotPose().rho;
-  // Robot standard deviations
-  file << "," << std::sqrt(var.robot(0)) << "," << std::sqrt(var.robot(1))
-       << "," << std::sqrt(var.robot(2));
-
-  // Landmark poses and standard deviations
-  for (size_t i = 0; i < var.landmarks.size(); ++i) {
-    Eigen::Vector2d lm_pos = ekf.landmarkPose(i);
-    file << "," << lm_pos[0] << "," << lm_pos[1];
-    file << "," << std::sqrt(var.landmarks[i](0)) << ","
-         << std::sqrt(var.landmarks[i](1));
-  }
-}
-
-void writeStateToFile(std::ofstream& file, double time, EKFSLAM& ekf_ideal,
-                      EKFSLAM& ekf_noisy) {
-  file << time;
-  writeStateBlock(file, ekf_ideal);
-  writeStateBlock(file, ekf_noisy);
-  file << std::endl;
-}
-
 void calcOdometry(Pose& pos, const EKFSLAM::Control& u) {
   double x     = pos.x;
   double y     = pos.y;
@@ -124,21 +96,7 @@ int main() {
   }
 
   // Write header — ideal (undisturbed) columns first, then noisy columns
-  auto writeLmHeader = [&](const std::string& prefix) {
-    for (size_t i = 0; i < EKFSLAM::NUM_LANDMARKS; ++i) {
-      outFile << "," << prefix << "lm" << i << "_x," << prefix << "lm" << i
-              << "_y," << prefix << "lm" << i << "_std_x," << prefix << "lm"
-              << i << "_std_y";
-    }
-  };
-  outFile
-      << "time"
-      << ",robot_x,robot_y,robot_theta,robot_std_x,robot_std_y,robot_std_theta";
-  writeLmHeader("");
-  outFile << ",noisy_robot_x,noisy_robot_y,noisy_robot_theta"
-             ",noisy_robot_std_x,noisy_robot_std_y,noisy_robot_std_theta";
-  writeLmHeader("noisy_");
-  outFile << std::endl;
+  EKFSLAM::writeHeader(outFile);
   long timestamp = 0;  // in milliseconds
 
   for (float t = 0.0; t < 250.0; t += dt) {
@@ -232,7 +190,7 @@ int main() {
               << " degrees" << "  noise: " << noise_v << std::endl;
 
     // Write state to file (ideal first, then noisy)
-    writeStateToFile(outFile, t, ekf, ekf_real);
+    EKFSLAM::writeStateToFile(outFile, t, ekf, ekf_real);
   }
 
   // Close output file
