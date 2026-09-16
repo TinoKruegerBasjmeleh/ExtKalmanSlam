@@ -1,8 +1,19 @@
-#include "ext_kalman_slam.h"
-
+/******************************************************************************
+ *  Copyright (c) 2025, KION Group                                            *
+ *  All rights reserved.                                                      *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * Authors
+ *   Tino Krueger-Basjmeleh (tino.krueger@kiongroup.com)
+ ******************************************************************************/
 #include <gtest/gtest.h>
 
 #include <cmath>
+
+#include "ext_kalman_slam.h"  // NOLINT(build/include_subdir)
 
 // These tests exercise EKFSLAM through its public interface only. The
 // low-level math helpers (motionModel, motionJacobian, measurementJacobian,

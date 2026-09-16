@@ -1,7 +1,19 @@
+/******************************************************************************
+ *  Copyright (c) 2025, KION Group                                            *
+ *  All rights reserved.                                                      *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * Authors
+ *   Tino Krueger-Basjmeleh (tino.krueger@kiongroup.com)
+ ******************************************************************************/
 #ifndef LANDMARK_MAP_H_
 #define LANDMARK_MAP_H_
 
 #include <Eigen/Dense>
+#include <cstdint>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -16,17 +28,17 @@
  * flag recording whether the landmark has actually been observed yet.
  * ***************************************************************************/
 struct Landmark {
-  int    id        = -1;  // Stable landmark identifier
-  double x         = std::numeric_limits<double>::max();  // Global x position
-  double y         = std::numeric_limits<double>::max();  // Global y position
-  double std_x     = 0.0;  // Standard deviation of x
-  double std_y     = 0.0;  // Standard deviation of y
-  long   timestamp = 0;    // Timestamp of the observation in ms, 0 means never
-                           // observed
+  int     id        = -1;  // Stable landmark identifier
+  double  x         = std::numeric_limits<double>::max();  // Global x position
+  double  y         = std::numeric_limits<double>::max();  // Global y position
+  double  std_x     = 0.0;  // Standard deviation of x
+  double  std_y     = 0.0;  // Standard deviation of y
+  int64_t timestamp = 0;    // Timestamp of the observation in ms, 0 means never
+                            // observed
 
-  Landmark()       = default;
+  Landmark()        = default;
   Landmark(int id_, double x_, double y_, double std_x_ = 0.0,
-           double std_y_ = 0.0, long timestamp_ = 0)
+           double std_y_ = 0.0, int64_t timestamp_ = 0)
       : id(id_),
         x(x_),
         y(y_),
@@ -54,7 +66,7 @@ class LandmarkMap {
   }
 
   void addLandmark(int id, double x, double y, double std_x = 0.0,
-                   double std_y = 0.0, long timestamp = 0) {
+                   double std_y = 0.0, int64_t timestamp = 0) {
     landmarks_[id] = Landmark(id, x, y, std_x, std_y, timestamp);
   }
 

@@ -1,11 +1,25 @@
+/******************************************************************************
+ *  Copyright (c) 2025, KION Group                                            *
+ *  All rights reserved.                                                      *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * Authors
+ *   Tino Krueger-Basjmeleh (tino.krueger@kiongroup.com)
+ ******************************************************************************/
 #include <Eigen/Dense>
-#include <iostream>
-#include <fstream>
+
 #include <cmath>
-#include "ext_kalman_slam.h"
-#include "cotrans.h"
-#include "landmark_map.h"
+#include <cstdint>
+#include <fstream>
+#include <iostream>
 #include <random>
+
+#include "cotrans.h"          // NOLINT(build/include_subdir)
+#include "ext_kalman_slam.h"  // NOLINT(build/include_subdir)
+#include "landmark_map.h"     // NOLINT(build/include_subdir)
 
 using Pose = Position2D<double>;
 using TMat = TransMatrix2D<double>;
@@ -97,11 +111,11 @@ int main() {
 
   // Write header — ideal (undisturbed) columns first, then noisy columns
   EKFSLAM::writeHeader(outFile);
-  long timestamp = 0;  // in milliseconds
+  int64_t timestamp = 0;  // in milliseconds
 
   for (float t = 0.0; t < 250.0; t += dt) {
-    timestamp += static_cast<long>(dt * 1000);  // Update timestamp in
-                                                // milliseconds
+    timestamp += static_cast<int64_t>(dt * 1000);  // Update timestamp in
+                                                   // milliseconds
     double noise_v = getRandomDouble(-measurementNoise(0, 0),
                                      measurementNoise(0, 0));  // Linear
                                                                // velocity noise

@@ -1,5 +1,21 @@
-#ifndef MAIN_COTRANS_H_
-#define MAIN_COTRANS_H_
+/******************************************************************************
+ * Copyright (C) 2005-2006 University of Hannover
+ *                         Institute for Systems Engineering - RTS
+ *                         Professor Bernardo Wagner
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * Authors
+ *         Dennis Schüthe <dennis_schuethe@kiongroup.com>
+ *         Volker Viereck <volker.viereck@kiongroup.com>
+ *         Felix Hess     <felix.hess@kiongroup.com>
+ *         Tino Krueger-Basjmeleh <tino.krueger@still.de.de>
+ ******************************************************************************/
+#ifndef COTRANS_H_
+#define COTRANS_H_
 
 #include <array>
 #include <cmath>
@@ -25,9 +41,15 @@ class CoTransT {
     const T c = std::cos(off.rho);
     const T s = std::sin(off.rho);
 
-    tm[0][0] = c;     tm[0][1] = -s;    tm[0][2] = off.x;
-    tm[1][0] = s;     tm[1][1] = c;     tm[1][2] = off.y;
-    tm[2][0] = T(0);  tm[2][1] = T(0);  tm[2][2] = T(1);
+    tm[0][0]  = c;
+    tm[0][1]  = -s;
+    tm[0][2]  = off.x;
+    tm[1][0]  = s;
+    tm[1][1]  = c;
+    tm[1][2]  = off.y;
+    tm[2][0]  = T(0);
+    tm[2][1]  = T(0);
+    tm[2][2]  = T(1);
   }
 
   static void getOffset(Position2D<T>& off, const TransMatrix2D<T>& tm) {
@@ -68,8 +90,7 @@ class CoTransT {
   }
 
   static void transPosition2d(const TransMatrix2D<T>& tm,
-                              const Position2D<T>&    p,
-                              Position2D<T>&          pTrans) {
+                              const Position2D<T>& p, Position2D<T>& pTrans) {
     TransMatrix2D<T> tmP{};
     TransMatrix2D<T> tmPTrans{};
     getTransMatrix2d(tmP, p);
@@ -78,4 +99,4 @@ class CoTransT {
   }
 };
 
-#endif  // MAIN_COTRANS_H_
+#endif  // COTRANS_H_

@@ -1,29 +1,37 @@
+/******************************************************************************
+ *  Copyright (c) 2025, KION Group                                            *
+ *  All rights reserved.                                                      *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * Authors
+ *   Tino Krueger-Basjmeleh (tino.krueger@kiongroup.com)
+ ******************************************************************************/
 #ifndef EXT_KALMAN_SLAM_H_
 #define EXT_KALMAN_SLAM_H_
 
 #include <Eigen/Dense>
+#include <cstdint>
 #include <cmath>
+#include <limits>
 #include <vector>
 #include <iostream>
 #include <fstream>
 #include <string>
 
-#include "angle_tool.h"
-#include "cotrans.h"
-#include "landmark_map.h"
+#include "angle_tool.h"    // NOLINT(build/include_subdir)
+#include "cotrans.h"       // NOLINT(build/include_subdir)
+#include "landmark_map.h"  // NOLINT(build/include_subdir)
 
 class EKFSLAM {
  public:
-  static constexpr size_t NUM_LANDMARKS      = 4;
-  static constexpr size_t STATE_SIZE         = 3 + 2 * NUM_LANDMARKS;
-  static constexpr double MAX_DIST_THRESHOLD = 500;  // Maximum distance in mm
-  static constexpr long   MIN_TIMEDIFF_2_DETECT_LOOP_CLOSURE = 1000;  // Minimum
-                                                                      // time
-  // difference
-  // in ms for
-  // detecting
-  // loop
-  // closure
+  static constexpr size_t  NUM_LANDMARKS      = 4;
+  static constexpr size_t  STATE_SIZE         = 3 + 2 * NUM_LANDMARKS;
+  static constexpr double  MAX_DIST_THRESHOLD = 500;  // Maximum distance in mm
+  // Minimum time difference in ms for detecting loop closure
+  static constexpr int64_t MIN_TIMEDIFF_2_DETECT_LOOP_CLOSURE = 1000;
 
   struct EKFState {
     Eigen::VectorXd mu{};     // State mean
@@ -37,7 +45,7 @@ class EKFSLAM {
   struct Measurement {
     int             id{-1};       // Landmark ID
     Eigen::Vector2d z{};          // Measurement (range, bearing)
-    long            timestamp{};  // Timestamp of the measurement
+    int64_t         timestamp{};  // Timestamp of the measurement
   };
 
   struct Variances {
