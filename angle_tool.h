@@ -18,11 +18,12 @@
  * @{
  */
 
-#ifndef MAIN_ANGLE_TOOL_H_
-#define MAIN_ANGLE_TOOL_H_
+#ifndef ANGLE_TOOL_H_
+#define ANGLE_TOOL_H_
 
 #include <math.h>
 
+#include <algorithm>
 #include <iostream>
 #include <type_traits>
 
@@ -139,4 +140,4 @@ class AngleTool {
  * @}
  */
 
-#endif  // MAIN_ANGLE_TOOL_H_
+#endif  // ANGLE_TOOL_H_
