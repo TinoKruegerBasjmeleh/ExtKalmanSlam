@@ -53,14 +53,14 @@ class EKFSLAM {
     std::vector<Eigen::Vector2d> landmarks;  // Landmark x, y variances
   };
 
-  void predict(const Control& u, const Eigen::Matrix3d& motionNoise) {
-    predict(state_, u, motionNoise);
+  void Predict(const Control& u, const Eigen::Matrix3d& motionNoise) {
+    Predict(state_, u, motionNoise);
   }
 
-  bool update(Measurement& meas, const Eigen::Matrix2d& Q) {
+  bool Update(Measurement& meas, const Eigen::Matrix2d& Q) {
     int assoziated_id = -1;
     // make data association
-    assoziated_id     = getAssociatedLandmarkId(meas);
+    assoziated_id     = GetAssociatedLandmarkId(meas);
     if (assoziated_id == -1) return false;
     if (assoziated_id < 0 || static_cast<size_t>(assoziated_id) >= map_.size())
       return false;
@@ -73,11 +73,11 @@ class EKFSLAM {
         abs(meas.timestamp - lm.timestamp) > MIN_TIMEDIFF_2_DETECT_LOOP_CLOSURE
             ? true
             : false;
-    update(state_, meas, Q, detect_loop_closure);
+    Update(state_, meas, Q, detect_loop_closure);
 
     // update the landmark inside map from the state
-    Eigen::Vector2d landmark_pos = landmarkPose(state_, assoziated_id);
-    Variances       var          = getVariances(state_);
+    Eigen::Vector2d landmark_pos = LandmarkPose(state_, assoziated_id);
+    Variances       var          = GetVariances(state_);
     // write the refreshed estimate back into the map (single source of truth)
 
     lm.timestamp                 = meas.timestamp;
@@ -89,29 +89,29 @@ class EKFSLAM {
     return true;
   }
 
-  Position2D<double> getRobotPose() {
+  Position2D<double> GetRobotPose() {
     Eigen::Vector3d pose = state_.mu.segment<3>(0);
     return Position2D<double>{pose[0], pose[1], pose[2]};
   }
 
-  Eigen::Vector2d landmarkPose(int landmark_id) {
-    return landmarkPose(state_, landmark_id);
+  Eigen::Vector2d LandmarkPose(int landmark_id) {
+    return LandmarkPose(state_, landmark_id);
   }
-  Variances                   getVariances() { return getVariances(state_); }
+  Variances                   GetVariances() { return GetVariances(state_); }
 
   /**
-   * @brief robotLandmarkCrossCovariance
+   * @brief RobotLandmarkCrossCovariance
    * The 3x2 covariance block coupling the robot pose to one landmark. Exposed
    * so that callers (and tests) can verify the filter actually maintains these
    * correlations, which is what distinguishes EKF-SLAM from a set of
    * independent per-landmark filters.
    */
-  Eigen::Matrix<double, 3, 2> robotLandmarkCrossCovariance(int landmark_id) {
-    return state_.sigma.block<3, 2>(0, landmarkIndex(landmark_id));
+  Eigen::Matrix<double, 3, 2> RobotLandmarkCrossCovariance(int landmark_id) {
+    return state_.sigma.block<3, 2>(0, LandmarkIndex(landmark_id));
   }
 
   /**
-   * @brief getAssociatedLandmarkId
+   * @brief GetAssociatedLandmarkId
    * Perform data association for a given measurement.
    * @param meas The measurement to associate. The measurement is relative
    * to the robot's current pose and in range-bearing (radian, mm)
@@ -119,18 +119,18 @@ class EKFSLAM {
    * @return The ID of the associated landmark, or -1 if no suitable match is
    * found.
    */
-  int getAssociatedLandmarkId(Measurement& meas) {
+  int GetAssociatedLandmarkId(Measurement& meas) {
     const double          r   = meas.z[0];
     const double          phi = meas.z[1];
     // Robot-relative landmark position, using the same (cos, sin) convention
-    // as initializeLandmark() and the measurement model.
+    // as InitializeLandmark() and the measurement model.
     Position2D<double>    lm_pos_robot_relative{r * std::cos(phi),
                                                 r * std::sin(phi), 0.0};
 
     Position2D<double>    lm_pos_global{}, robot_global{};
     TransMatrix2D<double> tm_robot_in_world{};
 
-    robot_global = getRobotPose();
+    robot_global = GetRobotPose();
     // 1. Transform the measurement into global coordinates.
     CoTransT<double>::getTransMatrix2d(tm_robot_in_world, robot_global);
     CoTransT<double>::transPosition2d(tm_robot_in_world, lm_pos_robot_relative,
@@ -142,11 +142,11 @@ class EKFSLAM {
     int    first_free = -1;
     double best_dist  = MAX_DIST_THRESHOLD;
     for (int id = 0; id < static_cast<int>(NUM_LANDMARKS); ++id) {
-      if (!checkIfLandmarkObserved(state_, id)) {
+      if (!CheckIfLandmarkObserved(state_, id)) {
         if (first_free == -1) first_free = id;
         continue;
       }
-      Eigen::Vector2d p = landmarkPose(state_, id);
+      Eigen::Vector2d p = LandmarkPose(state_, id);
       double          dist =
           std::hypot(lm_pos_global.x - p.x(), lm_pos_global.y - p.y());
       if (dist < best_dist) {
@@ -159,66 +159,66 @@ class EKFSLAM {
     return best_id != -1 ? best_id : first_free;
   }
 
-  LandmarkMap getLandmarkMap() { return map_; }
+  LandmarkMap GetLandmarkMap() { return map_; }
 
-  void        setStateFromMap(const LandmarkMap& map) {
-    for (const Landmark& lm : map.getAll()) {
+  void        SetStateFromMap(const LandmarkMap& map) {
+    for (const Landmark& lm : map.GetAll()) {
       if (lm.id >= 0 && static_cast<size_t>(lm.id) < NUM_LANDMARKS) {
         map_[lm.id] = lm;
       }
     }
-    setStateFromMap(state_, map);
+    SetStateFromMap(state_, map);
   }
-  void setInitialPos(const Eigen::Vector3d& initialPos,
+  void SetInitialPos(const Eigen::Vector3d& initialPos,
                      const Eigen::Matrix3d& initialCov) {
-    setInitialPos(state_, initialPos, initialCov);
+    SetInitialPos(state_, initialPos, initialCov);
   }
 
-  inline int landmarkIndex(int id) { return 3 + 2 * id; }
+  inline int LandmarkIndex(int id) { return 3 + 2 * id; }
 
   /****************************************************************************
-   * @brief writeStateBlock
+   * @brief WriteStateBlock
    * Write this instance's pose + landmark estimates as CSV fields (each field
    * prefixed with a comma). Variances are written as covariance diagonal
    * elements; the consumer (animate_ekf.py) applies sqrt() before use.
    * @param out the output stream to write to
    * ***************************************************************************/
-  void       writeStateBlock(std::ofstream& out) {
-    Position2D<double> pose = getRobotPose();
-    Variances          var  = getVariances();
+  void       WriteStateBlock(std::ofstream& out) {
+    Position2D<double> pose = GetRobotPose();
+    Variances          var  = GetVariances();
     out << "," << pose.x << "," << pose.y << "," << pose.rho << ","
         << sqrt(var.robot(0)) << "," << sqrt(var.robot(1));
     for (size_t i = 0; i < NUM_LANDMARKS; ++i) {
-      Eigen::Vector2d p = landmarkPose(static_cast<int>(i));
+      Eigen::Vector2d p = LandmarkPose(static_cast<int>(i));
       out << "," << p.x() << "," << p.y() << "," << sqrt(var.landmarks[i](0))
           << "," << sqrt(var.landmarks[i](1));
     }
   }
 
   /****************************************************************************
-   * @brief writeStateToFile
+   * @brief WriteStateToFile
    * Write a full CSV row: time, ideal state block, then noisy state block.
    * @param out the output stream to write to
    * @param time the current simulation time
    * @param ideal the EKF driven by noise-free control
    * @param noisy the EKF driven by noisy control and corrected by measurements
    * ***************************************************************************/
-  static void writeStateToFile(std::ofstream& out, double time, EKFSLAM& ideal,
+  static void WriteStateToFile(std::ofstream& out, double time, EKFSLAM& ideal,
                                EKFSLAM& noisy) {
     out << time;
-    ideal.writeStateBlock(out);
-    noisy.writeStateBlock(out);
+    ideal.WriteStateBlock(out);
+    noisy.WriteStateBlock(out);
     out << "\n";
   }
 
   /****************************************************************************
-   * @brief writeHeader
+   * @brief WriteHeader
    * Write the CSV header — ideal (undisturbed) columns first, then noisy
    * columns (prefixed with "noisy_"). Column layout must stay in sync with
    * animate_ekf.py.
    * @param out the output stream to write to
    * ***************************************************************************/
-  static void writeHeader(std::ofstream& out) {
+  static void WriteHeader(std::ofstream& out) {
     auto writeLmHeader = [&](const std::string& prefix) {
       out << "," << prefix << "robot_x" << "," << prefix << "robot_y" << ","
           << prefix << "robot_theta" << "," << prefix << "robot_std_x" << ","
@@ -239,19 +239,19 @@ class EKFSLAM {
   LandmarkMap map_{};
   EKFState    state_{};
 
-  void        predict(EKFState& state, const Control& u,
+  void        Predict(EKFState& state, const Control& u,
                       const Eigen::Matrix3d& motionNoise) {
     static_assert(STATE_SIZE == 3 + 2 * NUM_LANDMARKS,
                   "Example assumes 4 landmarks");
 
     // 1. Predict landmark pose  and  robot pose
     Eigen::Vector3d pose      = state.mu.segment<3>(0);
-    Eigen::Vector3d pose_pred = motionModel(pose, u);
+    Eigen::Vector3d pose_pred = MotionModel(pose, u);
     state.mu.segment<3>(0)    = pose_pred;
 
     // 2. Build full Jacobian G_t
     Eigen::MatrixXd G   = Eigen::MatrixXd::Identity(STATE_SIZE, STATE_SIZE);
-    G.block<3, 3>(0, 0) = motionJacobian(pose, u);
+    G.block<3, 3>(0, 0) = MotionJacobian(pose, u);
 
     // 3. Motion noise in full state space
     Eigen::MatrixXd R   = Eigen::MatrixXd::Zero(STATE_SIZE, STATE_SIZE);
@@ -262,17 +262,17 @@ class EKFSLAM {
     // with landmarks, not the entire matrix
     state.sigma         = G * state.sigma * G.transpose() + R;
   }
-  void update(EKFState& state, Measurement& meas, const Eigen::Matrix2d& Q,
+  void Update(EKFState& state, Measurement& meas, const Eigen::Matrix2d& Q,
               bool detect_loop_closure = false) {
     int             landmarkId = meas.id;
     Eigen::Vector2d z          = meas.z;
 
-    if (!checkIfLandmarkObserved(state, landmarkId)) {
-      initializeLandmark(state, landmarkId, z, Q);
+    if (!CheckIfLandmarkObserved(state, landmarkId)) {
+      InitializeLandmark(state, landmarkId, z, Q);
       return;
     }
     // 1. Predict measurement
-    Eigen::Vector2d z_hat = predictLandmarkMeasurement(state.mu, landmarkId);
+    Eigen::Vector2d z_hat = PredictLandmarkMeasurement(state.mu, landmarkId);
     // 2. Measurement residual
     Eigen::Vector2d y     = z - z_hat;
     y(1)                  = AngleTool::normaliseAngleSym0(y(1));
@@ -280,8 +280,8 @@ class EKFSLAM {
     // 3. Measurement Jacobian
     Eigen::Matrix<double, 2, 5> H(2, 5);
     H.setZero();
-    H = measurementJacobian(state.mu, landmarkId);
-    const int                   lm_idx = landmarkIndex(landmarkId);
+    H = MeasurementJacobian(state.mu, landmarkId);
+    const int                   lm_idx = LandmarkIndex(landmarkId);
     Eigen::Matrix<double, 5, 5> sigma_sub;
     sigma_sub.setZero();
     // Extract the relevant submatrix of the covariance for the robot (3x3
@@ -311,8 +311,8 @@ class EKFSLAM {
     state.mu(0) += K(0, 0) * y(0) + K(0, 1) * y(1);
     state.mu(1) += K(1, 0) * y(0) + K(1, 1) * y(1);
     state.mu(2) += K(2, 0) * y(0) + K(2, 1) * y(1);
-    state.mu(landmarkIndex(landmarkId)) += K(3, 0) * y(0) + K(3, 1) * y(1);
-    state.mu(landmarkIndex(landmarkId) + 1) += K(4, 0) * y(0) + K(4, 1) * y(1);
+    state.mu(LandmarkIndex(landmarkId)) += K(3, 0) * y(0) + K(3, 1) * y(1);
+    state.mu(LandmarkIndex(landmarkId) + 1) += K(4, 0) * y(0) + K(4, 1) * y(1);
 
     state.mu(2) = AngleTool::normaliseAngleSym0(state.mu(2));
 
@@ -324,25 +324,25 @@ class EKFSLAM {
     Eigen::MatrixXd I             = Eigen::MatrixXd::Identity(5, 5);
     sigma_sub                     = (I - K * H) * sigma_sub;
     state.sigma.block<3, 3>(0, 0) = sigma_sub.block<3, 3>(0, 0);
-    state.sigma.block<2, 2>(landmarkIndex(landmarkId),
-                            landmarkIndex(landmarkId)) =
+    state.sigma.block<2, 2>(LandmarkIndex(landmarkId),
+                            LandmarkIndex(landmarkId)) =
         sigma_sub.block<2, 2>(3, 3);
   }
 
-  void setInitialPos(EKFState& state, const Eigen::Vector3d& initialPos,
+  void SetInitialPos(EKFState& state, const Eigen::Vector3d& initialPos,
                      const Eigen::Matrix3d& initialCov) {
     state.mu.head<3>()            = initialPos;
     state.sigma.block<3, 3>(0, 0) = initialCov;
   }
 
   /****************************************************************************
-   * @brief getVariances
+   * @brief GetVariances
    * Extract the x and y variances from the covariance matrix for the robot
    * pose and all landmarks.
    * @param state the current EKF state
    * @return Variances struct containing robot and landmark x,y variances
    * ***************************************************************************/
-  Variances getVariances(const EKFState& state) {
+  Variances GetVariances(const EKFState& state) {
     Variances var;
 
     // Extract robot pose variance (x, y)
@@ -353,7 +353,7 @@ class EKFSLAM {
     // Extract landmark variances
     var.landmarks.resize(NUM_LANDMARKS);
     for (size_t i = 0; i < NUM_LANDMARKS; ++i) {
-      int idx             = landmarkIndex(i);
+      int idx             = LandmarkIndex(i);
       var.landmarks[i](0) = state.sigma(idx, idx);  // landmark x variance
       var.landmarks[i](1) = state.sigma(idx + 1, idx + 1);  // landmark y
                                                             // variance
@@ -362,32 +362,32 @@ class EKFSLAM {
     return var;
   }
   /****************************************************************************
-   * @brief getMapFromState
+   * @brief GetMapFromState
    * Build a LandmarkMap holding the current landmark estimates (position,
    * standard deviations and observed flag) so the already-existing landmarks
    * can be stored / serialised.
    * @param state the current EKF state
    * @return a LandmarkMap populated from the state
    * ***************************************************************************/
-  LandmarkMap getMapFromState(const EKFState& state) {
+  LandmarkMap GetMapFromState(const EKFState& state) {
     LandmarkMap map;
-    Variances   var = getVariances(state);
+    Variances   var = GetVariances(state);
     for (size_t i = 0; i < NUM_LANDMARKS; ++i) {
-      if (!checkIfLandmarkObserved(state, i)) {
-        map.addLandmark(static_cast<int>(i), std::numeric_limits<double>::max(),
+      if (!CheckIfLandmarkObserved(state, i)) {
+        map.AddLandmark(static_cast<int>(i), std::numeric_limits<double>::max(),
                         std::numeric_limits<double>::max());
         continue;
       }
       int             id  = static_cast<int>(i);
-      Eigen::Vector2d pos = landmarkPose(state, id);
-      map.addLandmark(id, pos.x(), pos.y(), std::sqrt(var.landmarks[i](0)),
+      Eigen::Vector2d pos = LandmarkPose(state, id);
+      map.AddLandmark(id, pos.x(), pos.y(), std::sqrt(var.landmarks[i](0)),
                       std::sqrt(var.landmarks[i](1)),
-                      checkIfLandmarkObserved(state, id));
+                      CheckIfLandmarkObserved(state, id));
     }
     return map;
   }
   /****************************************************************************
-   * @brief setStateFromMap
+   * @brief SetStateFromMap
    * Seed the EKF state at the beginning of tracking from a previously stored
    * LandmarkMap. Each landmark's position is written into the state mean and
    * its 2x2 covariance block is set from the stored standard deviations. Only
@@ -396,25 +396,25 @@ class EKFSLAM {
    * @param state the EKF state to seed (mean and covariance)
    * @param map the landmark map to read from
    * ***************************************************************************/
-  void setStateFromMap(EKFState& state, const LandmarkMap& map) {
-    for (const Landmark& lm : map.getAll()) {
+  void SetStateFromMap(EKFState& state, const LandmarkMap& map) {
+    for (const Landmark& lm : map.GetAll()) {
       if (lm.id < 0 || static_cast<size_t>(lm.id) >= NUM_LANDMARKS) {
         continue;
       }
-      int idx           = landmarkIndex(lm.id);
+      int idx           = LandmarkIndex(lm.id);
       state.mu(idx)     = lm.x;
       state.mu(idx + 1) = lm.y;
 
       // Reset the landmark covariance block to a diagonal built from the
       // stored standard deviations (no cross-covariances), consistent with
-      // initializeLandmark().
+      // InitializeLandmark().
       state.sigma.block<2, 2>(idx, idx).setZero();
       state.sigma(idx, idx)         = lm.std_x * lm.std_x;
       state.sigma(idx + 1, idx + 1) = lm.std_y * lm.std_y;
     }
   }
   // begin private function definition
-  Eigen::Vector3d motionModel(const Eigen::Vector3d& pose, const Control& u) {
+  Eigen::Vector3d MotionModel(const Eigen::Vector3d& pose, const Control& u) {
     double          x     = pose(0);
     double          y     = pose(1);
     double          theta = pose(2);
@@ -437,7 +437,7 @@ class EKFSLAM {
     return new_pose;
   }
 
-  Eigen::Matrix3d motionJacobian(const Eigen::Vector3d& pose,
+  Eigen::Matrix3d MotionJacobian(const Eigen::Vector3d& pose,
                                  const Control&         u) {
     Eigen::Matrix3d G     = Eigen::Matrix3d::Identity();
 
@@ -460,7 +460,7 @@ class EKFSLAM {
   }
 
   /****************************************************************************
-   * @brief rangeBearingObservation
+   * @brief RangeBearingObservation
    * Calculate the expected observation (range and bearing) for a given landmark
    * based on the current state estimate in global coordinates.
    * @param mu the current state mean vector
@@ -469,7 +469,7 @@ class EKFSLAM {
    * @return the expected observation (range, bearing) for the landmark
    * ***************************************************************************/
 
-  Eigen::Vector2d rangeBearingObservation(const Eigen::VectorXd& mu,
+  Eigen::Vector2d RangeBearingObservation(const Eigen::VectorXd& mu,
                                           const Eigen::Vector2d& zj) {
     // pose of the robot
     double          x     = mu(0);
@@ -485,7 +485,7 @@ class EKFSLAM {
   }
 
   /****************************************************************************
-   * @brief predictLandmarkMeasurement
+   * @brief PredictLandmarkMeasurement
    * Calculate the expected measurement (range and bearing) for a given landmark
    * based on the current state estimate.
    * @param mu the current state mean vector
@@ -493,9 +493,9 @@ class EKFSLAM {
    * @return the expected measurement (range, bearing) for the individual
    * landmark
    * ***************************************************************************/
-  Eigen::Vector2d predictLandmarkMeasurement(const Eigen::VectorXd& mu,
+  Eigen::Vector2d PredictLandmarkMeasurement(const Eigen::VectorXd& mu,
                                              int landmarkId) {
-    int             idx   = landmarkIndex(landmarkId);
+    int             idx   = LandmarkIndex(landmarkId);
 
     // pose of the robot
     double          x     = mu(0);
@@ -517,12 +517,12 @@ class EKFSLAM {
     return z_hat;
   }
 
-  Eigen::Matrix<double, 2, 5> measurementJacobian(const Eigen::VectorXd& mu,
+  Eigen::Matrix<double, 2, 5> MeasurementJacobian(const Eigen::VectorXd& mu,
                                                   int landmarkId) {
     Eigen::Matrix<double, 2, 5> H;
     H.setZero();
 
-    int    idx    = landmarkIndex(landmarkId);
+    int    idx    = LandmarkIndex(landmarkId);
 
     double x      = mu(0);
     double y      = mu(1);
@@ -554,19 +554,19 @@ class EKFSLAM {
 
     return H;
   }
-  Eigen::Vector2d landmarkPose(const EKFState& state, int landmarkId) {
-    int    idx = landmarkIndex(landmarkId);
+  Eigen::Vector2d LandmarkPose(const EKFState& state, int landmarkId) {
+    int    idx = LandmarkIndex(landmarkId);
     double mx  = state.mu(idx);
     double my  = state.mu(idx + 1);
     return Eigen::Vector2d(mx, my);
   }
 
-  bool checkIfLandmarkObserved(const EKFState& state, int landmarkId) {
-    int idx = landmarkIndex(landmarkId);
+  bool CheckIfLandmarkObserved(const EKFState& state, int landmarkId) {
+    int idx = LandmarkIndex(landmarkId);
     return (fabs(state.mu(idx)) > 1.0 || fabs(state.mu(idx + 1)) > 1.0);
   }
 
-  void initializeLandmark(EKFState& state, int landmarkId,
+  void InitializeLandmark(EKFState& state, int landmarkId,
                           const Eigen::Vector2d& z, const Eigen::Matrix2d& Q) {
     // z = [range, bearing] measurement
     double             r     = z(0);  // range
@@ -576,7 +576,7 @@ class EKFSLAM {
     double             y     = state.mu(1);
     double             theta = state.mu(2);
 
-    int                idx   = landmarkIndex(landmarkId);
+    int                idx   = LandmarkIndex(landmarkId);
 
     // Initialize landmark position in global coordinates using the
     // double-precision templated CoTransT (the legacy float CoTrans
@@ -612,7 +612,7 @@ class EKFSLAM {
     state_.sigma =
         Eigen::MatrixXd::Identity(EKFSLAM::STATE_SIZE, EKFSLAM::STATE_SIZE) *
         1e-3;
-    map_ = getMapFromState(state_);
+    map_ = GetMapFromState(state_);
   }
 };
 

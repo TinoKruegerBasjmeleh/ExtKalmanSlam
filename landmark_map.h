@@ -46,7 +46,7 @@ struct Landmark {
         std_y(std_y_),
         timestamp(timestamp_) {}
 
-  Eigen::Vector2d position() const { return Eigen::Vector2d(x, y); }
+  Eigen::Vector2d Position() const { return Eigen::Vector2d(x, y); }
 };
 
 /****************************************************************************
@@ -61,28 +61,28 @@ class LandmarkMap {
  public:
   // ------------------------------------------------------------------ add
   // Insert a landmark or overwrite the existing one with the same id.
-  void addLandmark(const Landmark& landmark) {
+  void AddLandmark(const Landmark& landmark) {
     landmarks_[landmark.id] = landmark;
   }
 
-  void addLandmark(int id, double x, double y, double std_x = 0.0,
+  void AddLandmark(int id, double x, double y, double std_x = 0.0,
                    double std_y = 0.0, int64_t timestamp = 0) {
     landmarks_[id] = Landmark(id, x, y, std_x, std_y, timestamp);
   }
 
   // --------------------------------------------------------------- remove
   // Returns true if a landmark with the given id existed and was removed.
-  bool removeLandmark(int id) { return landmarks_.erase(id) > 0; }
+  bool RemoveLandmark(int id) { return landmarks_.erase(id) > 0; }
 
-  void clear() { landmarks_.clear(); }
+  void Clear() { landmarks_.clear(); }
 
   // -------------------------------------------------------------- retrieve
-  bool contains(int id) const {
+  bool Contains(int id) const {
     return landmarks_.find(id) != landmarks_.end();
   }
 
   // Copy the landmark into out. Returns false if it does not exist.
-  bool getLandmark(int id, Landmark& out) const {
+  bool GetLandmark(int id, Landmark& out) const {
     auto it = landmarks_.find(id);
     if (it == landmarks_.end()) {
       return false;
@@ -92,17 +92,17 @@ class LandmarkMap {
   }
 
   // Non-owning pointer to the stored landmark, or nullptr if absent.
-  Landmark* find(int id) {
+  Landmark* Find(int id) {
     auto it = landmarks_.find(id);
     return it == landmarks_.end() ? nullptr : &it->second;
   }
-  const Landmark* find(int id) const {
+  const Landmark* Find(int id) const {
     auto it = landmarks_.find(id);
     return it == landmarks_.end() ? nullptr : &it->second;
   }
 
   // Snapshot of every landmark, ordered by id.
-  std::vector<Landmark> getAll() const {
+  std::vector<Landmark> GetAll() const {
     std::vector<Landmark> result;
     result.reserve(landmarks_.size());
     for (const auto& entry : landmarks_) {
@@ -111,7 +111,7 @@ class LandmarkMap {
     return result;
   }
 
-  std::vector<int> ids() const {
+  std::vector<int> Ids() const {
     std::vector<int> result;
     result.reserve(landmarks_.size());
     for (const auto& entry : landmarks_) {
@@ -145,7 +145,7 @@ class LandmarkMap {
    * @param path destination file path
    * @return true on success, false if the file could not be written
    * ************************************************************************/
-  bool           save(const std::string& path) const {
+  bool           Save(const std::string& path) const {
     std::ofstream file(path, std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
       return false;
@@ -166,7 +166,7 @@ class LandmarkMap {
    * @param path source file path
    * @return true on success, false if the file could not be opened
    * ************************************************************************/
-  bool load(const std::string& path) {
+  bool Load(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) {
       return false;
