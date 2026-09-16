@@ -96,8 +96,8 @@ int main() {
   // Optionally seed the state from a previously stored landmark map so that
   // tracking starts with already-known landmarks instead of discovering them.
   LandmarkMap prior_map;
-  if (prior_map.load("landmark_map.csv")) {
-    ekf_real.setStateFromMap(prior_map);
+  if (prior_map.Load("landmark_map.csv")) {
+    ekf_real.SetStateFromMap(prior_map);
     std::cout << "Seeded state from landmark_map.csv (" << prior_map.size()
               << " landmarks)" << std::endl;
   }
@@ -110,7 +110,7 @@ int main() {
   }
 
   // Write header — ideal (undisturbed) columns first, then noisy columns
-  EKFSLAM::writeHeader(outFile);
+  EKFSLAM::WriteHeader(outFile);
   int64_t timestamp = 0;  // in milliseconds
 
   for (float t = 0.0; t < 250.0; t += dt) {
@@ -141,8 +141,8 @@ int main() {
     double dist_m3 = calcDist(pos_m3_in_robot);
     double dist_m4 = calcDist(pos_m4_in_robot);
 
-    ekf.predict(control, motionNoise);
-    ekf_real.predict(control_real, motionNoise);
+    ekf.Predict(control, motionNoise);
+    ekf_real.Predict(control_real, motionNoise);
 
     if (dist_m1 < measurement_range) {
       EKFSLAM::Measurement meas1{
@@ -150,9 +150,9 @@ int main() {
           Eigen::Vector2d(dist_m1,
                           std::atan2(pos_m1_in_robot.y, pos_m1_in_robot.x)),
           timestamp};
-      // ekf.update(state, meas1, measurementNoise); // Update with ideal
+      // ekf.Update(state, meas1, measurementNoise); // Update with ideal
       // measurement not needed
-      ekf_real.update(meas1, measurementNoise);
+      ekf_real.Update(meas1, measurementNoise);
     }
 
     if (dist_m2 < measurement_range) {
@@ -161,9 +161,9 @@ int main() {
           Eigen::Vector2d(dist_m2,
                           std::atan2(pos_m2_in_robot.y, pos_m2_in_robot.x)),
           timestamp};
-      // ekf.update(state, meas2, measurementNoise); // Update with ideal
+      // ekf.Update(state, meas2, measurementNoise); // Update with ideal
       // measurement not needed
-      ekf_real.update(meas2, measurementNoise);
+      ekf_real.Update(meas2, measurementNoise);
     }
 
     if (dist_m3 < measurement_range) {
@@ -172,9 +172,9 @@ int main() {
           Eigen::Vector2d(dist_m3,
                           std::atan2(pos_m3_in_robot.y, pos_m3_in_robot.x)),
           timestamp};
-      // ekf.update(state, meas3, measurementNoise); // Update with ideal
+      // ekf.Update(state, meas3, measurementNoise); // Update with ideal
       // measurement not needed
-      ekf_real.update(meas3, measurementNoise);
+      ekf_real.Update(meas3, measurementNoise);
     }
 
     if (dist_m4 < measurement_range) {
@@ -184,7 +184,7 @@ int main() {
                           std::atan2(pos_m4_in_robot.y, pos_m4_in_robot.x)),
           timestamp};
       // measurement not needed
-      ekf_real.update(meas4, measurementNoise);
+      ekf_real.Update(meas4, measurementNoise);
     }
 
     std::cout << "Time: " << t << "s, Position: (" << pos_robot.x << ", "
@@ -204,7 +204,7 @@ int main() {
               << " degrees" << "  noise: " << noise_v << std::endl;
 
     // Write state to file (ideal first, then noisy)
-    EKFSLAM::writeStateToFile(outFile, t, ekf, ekf_real);
+    EKFSLAM::WriteStateToFile(outFile, t, ekf, ekf_real);
   }
 
   // Close output file
@@ -213,8 +213,8 @@ int main() {
 
   // Store the final landmark estimates in a reloadable map container and
   // persist them so a later run can reload them via LandmarkMap::load().
-  LandmarkMap landmark_map = ekf_real.getLandmarkMap();
-  if (landmark_map.save("landmark_map.csv")) {
+  LandmarkMap landmark_map = ekf_real.GetLandmarkMap();
+  if (landmark_map.Save("landmark_map.csv")) {
     std::cout << "Landmark map (" << landmark_map.size()
               << " landmarks) written to landmark_map.csv" << std::endl;
   } else {
