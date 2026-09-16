@@ -11,9 +11,46 @@
  ******************************************************************************/
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "ext_kalman_slam.h"  // NOLINT(build/include_subdir)
+
+namespace {
+
+std::vector<std::string> SplitCsv(const std::string& line) {
+  std::vector<std::string> tokens;
+  std::stringstream        ss(line);
+  std::string              token;
+  while (std::getline(ss, token, ',')) {
+    tokens.push_back(token);
+  }
+  return tokens;
+}
+
+std::vector<std::string> ReadLines(const std::string& path) {
+  std::ifstream            in(path);
+  std::vector<std::string> lines;
+  std::string              line;
+  while (std::getline(in, line)) {
+    lines.push_back(line);
+  }
+  return lines;
+}
+
+// Number of CSV fields WriteHeader / WriteStateToFile emit: a leading "time"
+// column plus an ideal and a noisy block of (robot pose + std) and per-landmark
+// (position + std) fields.
+constexpr std::size_t kBlockFields     = 5 + 4 * EKFSLAM::NUM_LANDMARKS;
+constexpr std::size_t kExpectedColumns = 1 + 2 * kBlockFields;
+
+}  // namespace
 
 // These tests exercise EKFSLAM through its public interface only. The
 // low-level math helpers (MotionModel, MotionJacobian, MeasurementJacobian,
@@ -341,6 +378,88 @@ TEST_F(EKFSLAMTest, LandmarkCloseToRobotStability) {
 
   EKFSLAM::Variances var = ekf.GetVariances();
   EXPECT_TRUE(var.robot.allFinite());
+}
+
+// ============================================================================
+// State Logging / Serialization Tests
+// ============================================================================
+
+TEST_F(EKFSLAMTest, WriteHeaderProducesExpectedColumns) {
+  const std::string path = ::testing::TempDir() + "ekf_header.csv";
+  {
+    std::ofstream out(path);
+    ASSERT_TRUE(out.is_open());
+    EKFSLAM::WriteHeader(out);
+  }
+
+  const std::vector<std::string> lines = ReadLines(path);
+  std::remove(path.c_str());
+
+  ASSERT_EQ(lines.size(), 1u);
+  const std::vector<std::string> cols = SplitCsv(lines[0]);
+  EXPECT_EQ(cols.size(), kExpectedColumns);
+  EXPECT_EQ(cols.front(), "time");
+  EXPECT_NE(std::find(cols.begin(), cols.end(), "robot_x"), cols.end());
+  EXPECT_NE(std::find(cols.begin(), cols.end(), "noisy_robot_x"), cols.end());
+  EXPECT_NE(std::find(cols.begin(), cols.end(), "lm0_x"), cols.end());
+  EXPECT_NE(std::find(cols.begin(), cols.end(), "noisy_lm3_std_y"), cols.end());
+}
+
+TEST_F(EKFSLAMTest, WriteStateBlockMatchesState) {
+  ekf.SetInitialPos(Eigen::Vector3d(1.0, 2.0, M_PI / 4.0),
+                    Eigen::Matrix3d::Identity() * 0.25);  // std = 0.5
+
+  const std::string path = ::testing::TempDir() + "ekf_block.csv";
+  {
+    std::ofstream out(path);
+    ASSERT_TRUE(out.is_open());
+    ekf.WriteStateBlock(out);
+  }
+
+  const std::vector<std::string> lines = ReadLines(path);
+  std::remove(path.c_str());
+
+  ASSERT_EQ(lines.size(), 1u);
+  // The block is emitted with a leading comma, so the first token is empty.
+  const std::vector<std::string> f = SplitCsv(lines[0]);
+  ASSERT_EQ(f.size(), 1u + kBlockFields);
+  EXPECT_EQ(f[0], "");
+  EXPECT_NEAR(std::stod(f[1]), 1.0, 1e-6);
+  EXPECT_NEAR(std::stod(f[2]), 2.0, 1e-6);
+  EXPECT_NEAR(std::stod(f[3]), M_PI / 4.0, 1e-4);
+  EXPECT_NEAR(std::stod(f[4]), 0.5, 1e-6);  // robot std_x = sqrt(0.25)
+  EXPECT_NEAR(std::stod(f[5]), 0.5, 1e-6);  // robot std_y = sqrt(0.25)
+}
+
+TEST_F(EKFSLAMTest, WriteStateToFileRoundTrip) {
+  EKFSLAM ideal;
+  EKFSLAM noisy;
+  ideal.SetInitialPos(Eigen::Vector3d(1.0, 0.0, 0.0),
+                      Eigen::Matrix3d::Identity() * 0.1);
+  noisy.SetInitialPos(Eigen::Vector3d(1.1, 0.0, 0.0),
+                      Eigen::Matrix3d::Identity() * 0.1);
+
+  const std::string path = ::testing::TempDir() + "ekf_row.csv";
+  {
+    std::ofstream out(path);
+    ASSERT_TRUE(out.is_open());
+    EKFSLAM::WriteHeader(out);
+    EKFSLAM::WriteStateToFile(out, 1.5, ideal, noisy);
+  }
+
+  const std::vector<std::string> lines = ReadLines(path);
+  std::remove(path.c_str());
+
+  ASSERT_EQ(lines.size(), 2u);
+  const std::vector<std::string> header = SplitCsv(lines[0]);
+  const std::vector<std::string> row    = SplitCsv(lines[1]);
+  EXPECT_EQ(header.size(), kExpectedColumns);
+  EXPECT_EQ(row.size(), kExpectedColumns);
+  EXPECT_NEAR(std::stod(row[0]), 1.5, 1e-9);
+  // Ideal robot_x is the first block field after "time"; noisy robot_x starts
+  // the second block.
+  EXPECT_NEAR(std::stod(row[1]), 1.0, 1e-6);
+  EXPECT_NEAR(std::stod(row[1 + kBlockFields]), 1.1, 1e-6);
 }
 
 int main(int argc, char** argv) {
