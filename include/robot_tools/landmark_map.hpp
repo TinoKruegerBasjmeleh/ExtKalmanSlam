@@ -9,17 +9,17 @@
  * Authors
  *   Tino Krueger-Basjmeleh (tino.krueger@kiongroup.com)
  ******************************************************************************/
-#ifndef LANDMARK_MAP_H_
-#define LANDMARK_MAP_H_
+#ifndef ROBOT_TOOLS__LANDMARK_MAP_HPP_
+#define ROBOT_TOOLS__LANDMARK_MAP_HPP_
 
 #include <Eigen/Dense>
 #include <cstdint>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <limits>
 
 /****************************************************************************
  * @brief Landmark
@@ -27,24 +27,22 @@
  * position and the (standard-deviation) uncertainty of that estimate, plus a
  * flag recording whether the landmark has actually been observed yet.
  * ***************************************************************************/
-struct Landmark {
-  int     id        = -1;  // Stable landmark identifier
-  double  x         = std::numeric_limits<double>::max();  // Global x position
-  double  y         = std::numeric_limits<double>::max();  // Global y position
-  double  std_x     = 0.0;  // Standard deviation of x
-  double  std_y     = 0.0;  // Standard deviation of y
-  int64_t timestamp = 0;    // Timestamp of the observation in ms, 0 means never
-                            // observed
+struct Landmark
+{
+  int id = -1;                                    // Stable landmark identifier
+  double x = std::numeric_limits<double>::max();  // Global x position
+  double y = std::numeric_limits<double>::max();  // Global y position
+  double std_x = 0.0;                             // Standard deviation of x
+  double std_y = 0.0;                             // Standard deviation of y
+  int64_t timestamp = 0;  // Timestamp of the observation in ms, 0 means never
+                          // observed
 
-  Landmark()        = default;
-  Landmark(int id_, double x_, double y_, double std_x_ = 0.0,
-           double std_y_ = 0.0, int64_t timestamp_ = 0)
-      : id(id_),
-        x(x_),
-        y(y_),
-        std_x(std_x_),
-        std_y(std_y_),
-        timestamp(timestamp_) {}
+  Landmark() = default;
+  Landmark(
+    int id_, double x_, double y_, double std_x_ = 0.0, double std_y_ = 0.0, int64_t timestamp_ = 0)
+  : id(id_), x(x_), y(y_), std_x(std_x_), std_y(std_y_), timestamp(timestamp_)
+  {
+  }
 
   Eigen::Vector2d Position() const { return Eigen::Vector2d(x, y); }
 };
@@ -57,16 +55,16 @@ struct Landmark {
  * file and can be synchronised with an EKFSLAM state vector, which allows the
  * map to be saved after a run and reloaded to seed a later one.
  * ***************************************************************************/
-class LandmarkMap {
- public:
+class LandmarkMap
+{
+public:
   // ------------------------------------------------------------------ add
   // Insert a landmark or overwrite the existing one with the same id.
-  void AddLandmark(const Landmark& landmark) {
-    landmarks_[landmark.id] = landmark;
-  }
+  void AddLandmark(const Landmark & landmark) { landmarks_[landmark.id] = landmark; }
 
-  void AddLandmark(int id, double x, double y, double std_x = 0.0,
-                   double std_y = 0.0, int64_t timestamp = 0) {
+  void AddLandmark(
+    int id, double x, double y, double std_x = 0.0, double std_y = 0.0, int64_t timestamp = 0)
+  {
     landmarks_[id] = Landmark(id, x, y, std_x, std_y, timestamp);
   }
 
@@ -77,12 +75,11 @@ class LandmarkMap {
   void Clear() { landmarks_.clear(); }
 
   // -------------------------------------------------------------- retrieve
-  bool Contains(int id) const {
-    return landmarks_.find(id) != landmarks_.end();
-  }
+  bool Contains(int id) const { return landmarks_.find(id) != landmarks_.end(); }
 
   // Copy the landmark into out. Returns false if it does not exist.
-  bool GetLandmark(int id, Landmark& out) const {
+  bool GetLandmark(int id, Landmark & out) const
+  {
     auto it = landmarks_.find(id);
     if (it == landmarks_.end()) {
       return false;
@@ -92,51 +89,55 @@ class LandmarkMap {
   }
 
   // Non-owning pointer to the stored landmark, or nullptr if absent.
-  Landmark* Find(int id) {
+  Landmark * Find(int id)
+  {
     auto it = landmarks_.find(id);
     return it == landmarks_.end() ? nullptr : &it->second;
   }
-  const Landmark* Find(int id) const {
+  const Landmark * Find(int id) const
+  {
     auto it = landmarks_.find(id);
     return it == landmarks_.end() ? nullptr : &it->second;
   }
 
   // Snapshot of every landmark, ordered by id.
-  std::vector<Landmark> GetAll() const {
+  std::vector<Landmark> GetAll() const
+  {
     std::vector<Landmark> result;
     result.reserve(landmarks_.size());
-    for (const auto& entry : landmarks_) {
+    for (const auto & entry : landmarks_) {
       result.push_back(entry.second);
     }
     return result;
   }
 
-  std::vector<int> Ids() const {
+  std::vector<int> Ids() const
+  {
     std::vector<int> result;
     result.reserve(landmarks_.size());
-    for (const auto& entry : landmarks_) {
+    for (const auto & entry : landmarks_) {
       result.push_back(entry.first);
     }
     return result;
   }
 
   size_t size() const { return landmarks_.size(); }
-  bool   empty() const { return landmarks_.empty(); }
+  bool empty() const { return landmarks_.empty(); }
 
   // ------------------------------------------------------------- iteration
   // Direct, copy-free iteration over the stored (id -> Landmark) entries,
   // ordered by id. Enables range-based for and STL algorithms, e.g.
   //   for (const auto& [id, lm] : map) { ... }
-  using iterator       = std::map<int, Landmark>::iterator;
+  using iterator = std::map<int, Landmark>::iterator;
   using const_iterator = std::map<int, Landmark>::const_iterator;
 
-  iterator       begin() { return landmarks_.begin(); }
-  iterator       end() { return landmarks_.end(); }
+  iterator begin() { return landmarks_.begin(); }
+  iterator end() { return landmarks_.end(); }
   const_iterator begin() const { return landmarks_.begin(); }
   const_iterator end() const { return landmarks_.end(); }
   const_iterator cbegin() const { return landmarks_.cbegin(); }
   const_iterator cend() const { return landmarks_.cend(); }
-  Landmark&      operator[](int id) { return landmarks_[id]; }
+  Landmark & operator[](int id) { return landmarks_[id]; }
 
   // ---------------------------------------------------------- serialization
   /**************************************************************************
@@ -145,16 +146,17 @@ class LandmarkMap {
    * @param path destination file path
    * @return true on success, false if the file could not be written
    * ************************************************************************/
-  bool           Save(const std::string& path) const {
+  bool Save(const std::string & path) const
+  {
     std::ofstream file(path, std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
       return false;
     }
     file << "id,x,y,std_x,std_y,timestamp\n";
-    for (const auto& entry : landmarks_) {
-      const Landmark& lm = entry.second;
-      file << lm.id << "," << lm.x << "," << lm.y << "," << lm.std_x << ","
-           << lm.std_y << "," << lm.timestamp << "\n";
+    for (const auto & entry : landmarks_) {
+      const Landmark & lm = entry.second;
+      file << lm.id << "," << lm.x << "," << lm.y << "," << lm.std_x << "," << lm.std_y << ","
+           << lm.timestamp << "\n";
     }
     return static_cast<bool>(file);
   }
@@ -166,7 +168,8 @@ class LandmarkMap {
    * @param path source file path
    * @return true on success, false if the file could not be opened
    * ************************************************************************/
-  bool Load(const std::string& path) {
+  bool Load(const std::string & path)
+  {
     std::ifstream file(path);
     if (!file.is_open()) {
       return false;
@@ -180,8 +183,8 @@ class LandmarkMap {
         continue;
       }
       std::stringstream ss(line);
-      std::string       token;
-      Landmark          lm;
+      std::string token;
+      Landmark lm;
 
       if (!std::getline(ss, token, ',')) continue;
       lm.id = std::stoi(token);
@@ -202,8 +205,8 @@ class LandmarkMap {
     return true;
   }
 
- private:
+private:
   std::map<int, Landmark> landmarks_;
 };
 
-#endif  // LANDMARK_MAP_H_
+#endif  // ROBOT_TOOLS__LANDMARK_MAP_HPP_

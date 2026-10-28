@@ -42,6 +42,14 @@ repos:
         args: ["--verbose"]
 -   repo: local
     hooks:
+      - id: slam3d-sync
+        name: slam3d-sync
+        description: Warn if shared sources differ from slam3d_tools (run scripts/sync_slam3d.sh --copy).
+        language: system
+        entry: scripts/sync_slam3d.sh
+        files: ^(include/robot_tools/.*\.hpp|test_ext_kalman_slam\.cpp)$
+        pass_filenames: false
+        verbose: true
       - id: cmakelint
         name: cmakelint
         description: Check CMake code style using cmakelint.
