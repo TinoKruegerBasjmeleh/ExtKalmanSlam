@@ -20,24 +20,27 @@
 #include <string>
 #include <vector>
 
-#include "ext_kalman_slam.h"  // NOLINT(build/include_subdir)
+#include "robot_tools/ext_kalmanfilter_tool.hpp"
 
-namespace {
+namespace
+{
 
-std::vector<std::string> SplitCsv(const std::string& line) {
+std::vector<std::string> SplitCsv(const std::string & line)
+{
   std::vector<std::string> tokens;
-  std::stringstream        ss(line);
-  std::string              token;
+  std::stringstream ss(line);
+  std::string token;
   while (std::getline(ss, token, ',')) {
     tokens.push_back(token);
   }
   return tokens;
 }
 
-std::vector<std::string> ReadLines(const std::string& path) {
-  std::ifstream            in(path);
+std::vector<std::string> ReadLines(const std::string & path)
+{
+  std::ifstream in(path);
   std::vector<std::string> lines;
-  std::string              line;
+  std::string line;
   while (std::getline(in, line)) {
     lines.push_back(line);
   }
@@ -47,7 +50,7 @@ std::vector<std::string> ReadLines(const std::string& path) {
 // Number of CSV fields WriteHeader / WriteStateToFile emit: a leading "time"
 // column plus an ideal and a noisy block of (robot pose + std) and per-landmark
 // (position + std) fields.
-constexpr std::size_t kBlockFields     = 5 + 4 * EKFSLAM::NUM_LANDMARKS;
+constexpr std::size_t kBlockFields = 5 + 4 * EKFSLAM::NUM_LANDMARKS;
 constexpr std::size_t kExpectedColumns = 1 + 2 * kBlockFields;
 
 }  // namespace
@@ -57,13 +60,15 @@ constexpr std::size_t kExpectedColumns = 1 + 2 * kBlockFields;
 // RangeBearingObservation, PredictLandmarkMeasurement, InitializeLandmark,
 // CheckIfLandmarkObserved) are now private and are validated indirectly via
 // Predict()/Update()/GetRobotPose()/LandmarkPose()/GetVariances().
-class EKFSLAMTest : public ::testing::Test {
- protected:
-  EKFSLAM         ekf;
+class EKFSLAMTest : public ::testing::Test
+{
+protected:
+  EKFSLAM ekf;
   Eigen::Matrix3d motionNoise;
   Eigen::Matrix2d measurementNoise;
 
-  void            SetUp() override {
+  void SetUp() override
+  {
     // Small process noise
     motionNoise.setIdentity();
     motionNoise *= 0.01;
@@ -73,8 +78,7 @@ class EKFSLAMTest : public ::testing::Test {
     measurementNoise *= 0.01;
 
     // Robot at origin with moderate, isotropic uncertainty.
-    ekf.SetInitialPos(Eigen::Vector3d(0.0, 0.0, 0.0),
-                      Eigen::Matrix3d::Identity() * 0.1);
+    ekf.SetInitialPos(Eigen::Vector3d(0.0, 0.0, 0.0), Eigen::Matrix3d::Identity() * 0.1);
   }
 };
 
@@ -82,50 +86,53 @@ class EKFSLAMTest : public ::testing::Test {
 // Motion Model Tests
 // ============================================================================
 
-TEST_F(EKFSLAMTest, MotionModelStraightLine) {
+TEST_F(EKFSLAMTest, MotionModelStraightLine)
+{
   // Straight-line motion (w = 0) via a single prediction step.
   EKFSLAM::Control u{1.0, 0.0, 1.0};  // v=1, w=0, dt=1
 
   ekf.Predict(u, motionNoise);
-  Position2D<double> pose = ekf.GetRobotPose();
+  Eigen::Vector3d pose = ekf.GetRobotPose();
 
   // Should move forward 1 meter in x direction
-  EXPECT_NEAR(pose.x, 1.0, 1e-5);
-  EXPECT_NEAR(pose.y, 0.0, 1e-5);
-  EXPECT_NEAR(pose.rho, 0.0, 1e-5);
+  EXPECT_NEAR(pose(0), 1.0, 1e-5);
+  EXPECT_NEAR(pose(1), 0.0, 1e-5);
+  EXPECT_NEAR(pose(2), 0.0, 1e-5);
 }
 
-TEST_F(EKFSLAMTest, MotionModelCircularMotion) {
+TEST_F(EKFSLAMTest, MotionModelCircularMotion)
+{
   EKFSLAM::Control u{1.0, M_PI / 2.0, 1.0};  // v=1, w=π/2, dt=1 (90° turn)
 
   ekf.Predict(u, motionNoise);
-  Position2D<double> pose   = ekf.GetRobotPose();
+  Eigen::Vector3d pose = ekf.GetRobotPose();
 
-  double             radius = u.v / u.w;  // radius = 2/π
+  double radius = u.v / u.w;  // radius = 2/π
   // After a 90° turn, robot should be at approximately (radius, radius, π/2)
-  EXPECT_NEAR(pose.x, radius, 1e-4);
-  EXPECT_NEAR(pose.y, radius, 1e-4);
-  EXPECT_NEAR(pose.rho, M_PI / 2.0, 1e-5);
+  EXPECT_NEAR(pose(0), radius, 1e-4);
+  EXPECT_NEAR(pose(1), radius, 1e-4);
+  EXPECT_NEAR(pose(2), M_PI / 2.0, 1e-5);
 }
 
-TEST_F(EKFSLAMTest, MotionModelAngleNormalization) {
+TEST_F(EKFSLAMTest, MotionModelAngleNormalization)
+{
   // Angles must stay normalized to [-π, π].
-  ekf.SetInitialPos(Eigen::Vector3d(0.0, 0.0, 3.0),
-                    Eigen::Matrix3d::Identity() * 0.1);
+  ekf.SetInitialPos(Eigen::Vector3d(0.0, 0.0, 3.0), Eigen::Matrix3d::Identity() * 0.1);
   EKFSLAM::Control u{1.0, 2.0, 1.0};  // Large angular velocity
 
   ekf.Predict(u, motionNoise);
-  Position2D<double> pose = ekf.GetRobotPose();
+  Eigen::Vector3d pose = ekf.GetRobotPose();
 
-  EXPECT_GE(pose.rho, -M_PI);
-  EXPECT_LE(pose.rho, M_PI);
+  EXPECT_GE(pose(2), -M_PI);
+  EXPECT_LE(pose(2), M_PI);
 }
 
 // ============================================================================
 // Prediction Covariance Tests
 // ============================================================================
 
-TEST_F(EKFSLAMTest, PredictKeepsCovarianceFinite) {
+TEST_F(EKFSLAMTest, PredictKeepsCovarianceFinite)
+{
   ekf.Predict({1.0, 0.5, 1.0}, motionNoise);  // Circular motion
   EKFSLAM::Variances var = ekf.GetVariances();
   EXPECT_TRUE(var.robot.allFinite());
@@ -135,15 +142,16 @@ TEST_F(EKFSLAMTest, PredictKeepsCovarianceFinite) {
 // Prediction Tests
 // ============================================================================
 
-TEST_F(EKFSLAMTest, PredictUpdatesRobotPose) {
-  Position2D<double> before = ekf.GetRobotPose();
+TEST_F(EKFSLAMTest, PredictUpdatesRobotPose)
+{
+  Eigen::Vector3d before = ekf.GetRobotPose();
 
   ekf.Predict({1.0, 0.0, 1.0}, motionNoise);  // Move forward 1 meter
 
-  Position2D<double> after = ekf.GetRobotPose();
+  Eigen::Vector3d after = ekf.GetRobotPose();
 
   // Robot position should have changed
-  EXPECT_NE(after.x, before.x);
+  EXPECT_NE(after(0), before(0));
 
   // Landmarks are untouched by a pure prediction step.
   for (size_t i = 0; i < EKFSLAM::NUM_LANDMARKS; ++i) {
@@ -153,7 +161,8 @@ TEST_F(EKFSLAMTest, PredictUpdatesRobotPose) {
   }
 }
 
-TEST_F(EKFSLAMTest, PredictIncreasesUncertainty) {
+TEST_F(EKFSLAMTest, PredictIncreasesUncertainty)
+{
   EKFSLAM::Variances before = ekf.GetVariances();
 
   ekf.Predict({1.0, 0.0, 1.0}, motionNoise);
@@ -168,7 +177,8 @@ TEST_F(EKFSLAMTest, PredictIncreasesUncertainty) {
 // Landmark Initialisation (via update) Tests
 // ============================================================================
 
-TEST_F(EKFSLAMTest, UpdateInitialisesLandmarkAhead) {
+TEST_F(EKFSLAMTest, UpdateInitialisesLandmarkAhead)
+{
   // Robot at origin, landmark measured 5 units directly ahead.
   EKFSLAM::Measurement meas{-1, Eigen::Vector2d(5.0, 0.0), 0};
 
@@ -179,9 +189,9 @@ TEST_F(EKFSLAMTest, UpdateInitialisesLandmarkAhead) {
   EXPECT_NEAR(lm(1), 0.0, 1e-5);
 }
 
-TEST_F(EKFSLAMTest, UpdateInitialisesLandmarkWithRotation) {
-  ekf.SetInitialPos(Eigen::Vector3d(0.0, 0.0, M_PI / 2.0),
-                    Eigen::Matrix3d::Identity() * 0.1);
+TEST_F(EKFSLAMTest, UpdateInitialisesLandmarkWithRotation)
+{
+  ekf.SetInitialPos(Eigen::Vector3d(0.0, 0.0, M_PI / 2.0), Eigen::Matrix3d::Identity() * 0.1);
   EKFSLAM::Measurement meas{-1, Eigen::Vector2d(5.0, 0.0), 0};
 
   EXPECT_TRUE(ekf.Update(meas, measurementNoise));
@@ -192,12 +202,14 @@ TEST_F(EKFSLAMTest, UpdateInitialisesLandmarkWithRotation) {
   EXPECT_NEAR(lm(1), 5.0, 1e-5);
 }
 
-TEST_F(EKFSLAMTest, DataAssociationPicksFirstFreeLandmark) {
+TEST_F(EKFSLAMTest, DataAssociationPicksFirstFreeLandmark)
+{
   EKFSLAM::Measurement meas{-1, Eigen::Vector2d(5.0, 0.0), 0};
   EXPECT_EQ(ekf.GetAssociatedLandmarkId(meas), 0);
 }
 
-TEST_F(EKFSLAMTest, DataAssociationReobservesSameLandmark) {
+TEST_F(EKFSLAMTest, DataAssociationReobservesSameLandmark)
+{
   EKFSLAM::Measurement first{-1, Eigen::Vector2d(5.0, 0.0), 0};
   ekf.Update(first, measurementNoise);
 
@@ -212,15 +224,38 @@ TEST_F(EKFSLAMTest, DataAssociationReobservesSameLandmark) {
   EXPECT_DOUBLE_EQ(lm1(1), 0.0);
 }
 
+TEST_F(EKFSLAMTest, MaxDistThresholdDefaultsAndIsConfigurable)
+{
+  EXPECT_DOUBLE_EQ(ekf.GetMaxDistThreshold(), EKFSLAM::DEFAULT_MAX_DIST_THRESHOLD);
+  EKFSLAM narrow{500.0};
+  EXPECT_DOUBLE_EQ(narrow.GetMaxDistThreshold(), 500.0);
+}
+
+TEST_F(EKFSLAMTest, MaxDistThresholdGatesDataAssociation)
+{
+  // Landmark 0 at (2000, 0); a second detection 1000 mm away lies outside a
+  // 500 mm gate (new landmark) but inside a 2500 mm gate (same landmark).
+  EKFSLAM narrow{500.0};
+  EKFSLAM wide{2500.0};
+  EKFSLAM::Measurement first{-1, Eigen::Vector2d(2000.0, 0.0), 0};
+  narrow.Update(first, measurementNoise);
+  wide.Update(first, measurementNoise);
+
+  EKFSLAM::Measurement offset{-1, Eigen::Vector2d(3000.0, 0.0), 100};
+  EXPECT_EQ(narrow.GetAssociatedLandmarkId(offset), 1);
+  EXPECT_EQ(wide.GetAssociatedLandmarkId(offset), 0);
+}
+
 // ============================================================================
 // Landmark Refinement Tests
 // ============================================================================
 
-TEST_F(EKFSLAMTest, UpdateRefinesLandmarkEstimate) {
+TEST_F(EKFSLAMTest, UpdateRefinesLandmarkEstimate)
+{
   // Initialise landmark 0 at (5, 0).
   EKFSLAM::Measurement init{-1, Eigen::Vector2d(5.0, 0.0), 0};
   ekf.Update(init, measurementNoise);
-  Eigen::Vector2d      before = ekf.LandmarkPose(0);
+  Eigen::Vector2d before = ekf.LandmarkPose(0);
 
   // A slightly different observation should shift the estimate.
   EKFSLAM::Measurement meas{-1, Eigen::Vector2d(4.5, -0.1), 0};
@@ -235,16 +270,17 @@ TEST_F(EKFSLAMTest, UpdateRefinesLandmarkEstimate) {
 // Update Step Tests
 // ============================================================================
 
-TEST_F(EKFSLAMTest, UpdateReducesUncertainty) {
+TEST_F(EKFSLAMTest, UpdateReducesUncertainty)
+{
   ekf.SetInitialPos(Eigen::Vector3d::Zero(), Eigen::Matrix3d::Identity() * 0.5);
 
   // Initialise landmark 0 (timestamp 0).
   EKFSLAM::Measurement init{-1, Eigen::Vector2d(5.0, 0.0), 0};
   ekf.Update(init, measurementNoise);
-  const EKFSLAM::Variances at_init    = ekf.GetVariances();
+  const EKFSLAM::Variances at_init = ekf.GetVariances();
 
   // Accumulate motion uncertainty without observing anything.
-  Eigen::Matrix3d          driftNoise = Eigen::Matrix3d::Identity() * 0.01;
+  Eigen::Matrix3d driftNoise = Eigen::Matrix3d::Identity() * 0.01;
   for (int i = 0; i < 10; ++i) {
     ekf.Predict(EKFSLAM::Control{0.0, 0.0, 0.1}, driftNoise);
   }
@@ -256,9 +292,8 @@ TEST_F(EKFSLAMTest, UpdateReducesUncertainty) {
   // introduced error -- a zero residual carries no information and must not
   // shrink the covariance.
   const Eigen::Vector2d lm = ekf.LandmarkPose(0);
-  const double          dx = lm.x(), dy = lm.y();
-  EKFSLAM::Measurement  meas{
-      -1, Eigen::Vector2d(std::hypot(dx, dy), std::atan2(dy, dx)), 50000};
+  const double dx = lm.x(), dy = lm.y();
+  EKFSLAM::Measurement meas{-1, Eigen::Vector2d(std::hypot(dx, dy), std::atan2(dy, dx)), 50000};
   ekf.Update(meas, measurementNoise);
   const EKFSLAM::Variances after = ekf.GetVariances();
 
@@ -281,12 +316,13 @@ TEST_F(EKFSLAMTest, UpdateReducesUncertainty) {
 // Integration Tests
 // ============================================================================
 
-TEST_F(EKFSLAMTest, FullEKFCycle) {
+TEST_F(EKFSLAMTest, FullEKFCycle)
+{
   ekf.SetInitialPos(Eigen::Vector3d::Zero(), Eigen::Matrix3d::Identity() * 0.1);
 
   // Step 1: Move forward.
   ekf.Predict({1.0, 0.0, 1.0}, motionNoise);
-  EXPECT_NEAR(ekf.GetRobotPose().x, 1.0, 0.1);
+  EXPECT_NEAR(ekf.GetRobotPose()(0), 1.0, 0.1);
 
   // Step 2: Observe (and initialise) landmark 0.
   EKFSLAM::Measurement meas1{-1, Eigen::Vector2d(5.0, 0.0), 100};
@@ -301,26 +337,27 @@ TEST_F(EKFSLAMTest, FullEKFCycle) {
   ekf.Update(meas2, measurementNoise);
 
   // All values should remain finite.
-  Position2D<double> pose = ekf.GetRobotPose();
-  EXPECT_TRUE(std::isfinite(pose.x));
-  EXPECT_TRUE(std::isfinite(pose.y));
-  EXPECT_TRUE(std::isfinite(pose.rho));
+  Eigen::Vector3d pose = ekf.GetRobotPose();
+  EXPECT_TRUE(std::isfinite(pose(0)));
+  EXPECT_TRUE(std::isfinite(pose(1)));
+  EXPECT_TRUE(std::isfinite(pose(2)));
 
   EKFSLAM::Variances var = ekf.GetVariances();
   EXPECT_TRUE(var.robot.allFinite());
-  for (const auto& lv : var.landmarks) {
+  for (const auto & lv : var.landmarks) {
     EXPECT_TRUE(lv.allFinite());
   }
 }
 
-TEST_F(EKFSLAMTest, LandmarkIndexHelper) {
+TEST_F(EKFSLAMTest, LandmarkIndexHelper)
+{
   for (size_t i = 0; i < EKFSLAM::NUM_LANDMARKS; ++i) {
-    EXPECT_EQ(ekf.LandmarkIndex(static_cast<int>(i)),
-              static_cast<int>(3 + 2 * i));
+    EXPECT_EQ(ekf.LandmarkIndex(static_cast<int>(i)), static_cast<int>(3 + 2 * i));
   }
 }
 
-TEST_F(EKFSLAMTest, LandmarkPoseRetrieval) {
+TEST_F(EKFSLAMTest, LandmarkPoseRetrieval)
+{
   LandmarkMap map;
   map.AddLandmark(0, 10.0, 20.0, 0.1, 0.1, 42);
   ekf.SetStateFromMap(map);
@@ -335,40 +372,40 @@ TEST_F(EKFSLAMTest, LandmarkPoseRetrieval) {
 // Edge Cases and Numerical Stability Tests
 // ============================================================================
 
-TEST_F(EKFSLAMTest, ZeroVelocityMotion) {
-  ekf.SetInitialPos(Eigen::Vector3d(1.0, 2.0, M_PI / 4.0),
-                    Eigen::Matrix3d::Identity() * 0.1);
+TEST_F(EKFSLAMTest, ZeroVelocityMotion)
+{
+  ekf.SetInitialPos(Eigen::Vector3d(1.0, 2.0, M_PI / 4.0), Eigen::Matrix3d::Identity() * 0.1);
   EKFSLAM::Control u{0.0, 0.0, 1.0};  // No motion
 
   ekf.Predict(u, motionNoise);
-  Position2D<double> pose = ekf.GetRobotPose();
+  Eigen::Vector3d pose = ekf.GetRobotPose();
 
   // Pose should remain unchanged
-  EXPECT_NEAR(pose.x, 1.0, 1e-5);
-  EXPECT_NEAR(pose.y, 2.0, 1e-5);
-  EXPECT_NEAR(pose.rho, M_PI / 4.0, 1e-5);
+  EXPECT_NEAR(pose(0), 1.0, 1e-5);
+  EXPECT_NEAR(pose(1), 2.0, 1e-5);
+  EXPECT_NEAR(pose(2), M_PI / 4.0, 1e-5);
 }
 
-TEST_F(EKFSLAMTest, SmallAngularVelocityUsesLinearApproximation) {
+TEST_F(EKFSLAMTest, SmallAngularVelocityUsesLinearApproximation)
+{
   EKFSLAM ekf1;
   EKFSLAM ekf2;
-  ekf1.SetInitialPos(Eigen::Vector3d::Zero(),
-                     Eigen::Matrix3d::Identity() * 0.1);
-  ekf2.SetInitialPos(Eigen::Vector3d::Zero(),
-                     Eigen::Matrix3d::Identity() * 0.1);
+  ekf1.SetInitialPos(Eigen::Vector3d::Zero(), Eigen::Matrix3d::Identity() * 0.1);
+  ekf2.SetInitialPos(Eigen::Vector3d::Zero(), Eigen::Matrix3d::Identity() * 0.1);
 
   ekf1.Predict({1.0, 1e-6, 1.0}, motionNoise);  // Very small ω (uses linear)
   ekf2.Predict({1.0, 0.0, 1.0}, motionNoise);   // Zero ω (definitely linear)
 
-  Position2D<double> p1 = ekf1.GetRobotPose();
-  Position2D<double> p2 = ekf2.GetRobotPose();
+  Eigen::Vector3d p1 = ekf1.GetRobotPose();
+  Eigen::Vector3d p2 = ekf2.GetRobotPose();
 
   // Results should be very close since both use the linear approximation.
-  EXPECT_NEAR(p1.x, p2.x, 1e-3);
-  EXPECT_NEAR(p1.y, p2.y, 1e-3);
+  EXPECT_NEAR(p1(0), p2(0), 1e-3);
+  EXPECT_NEAR(p1(1), p2(1), 1e-3);
 }
 
-TEST_F(EKFSLAMTest, LandmarkCloseToRobotStability) {
+TEST_F(EKFSLAMTest, LandmarkCloseToRobotStability)
+{
   // Edge case: landmark measured very close to the robot.
   EKFSLAM::Measurement meas{-1, Eigen::Vector2d(0.001, 0.0), 0};
   EXPECT_TRUE(ekf.Update(meas, measurementNoise));
@@ -384,7 +421,8 @@ TEST_F(EKFSLAMTest, LandmarkCloseToRobotStability) {
 // State Logging / Serialization Tests
 // ============================================================================
 
-TEST_F(EKFSLAMTest, WriteHeaderProducesExpectedColumns) {
+TEST_F(EKFSLAMTest, WriteHeaderProducesExpectedColumns)
+{
   const std::string path = ::testing::TempDir() + "ekf_header.csv";
   {
     std::ofstream out(path);
@@ -405,9 +443,11 @@ TEST_F(EKFSLAMTest, WriteHeaderProducesExpectedColumns) {
   EXPECT_NE(std::find(cols.begin(), cols.end(), "noisy_lm3_std_y"), cols.end());
 }
 
-TEST_F(EKFSLAMTest, WriteStateBlockMatchesState) {
-  ekf.SetInitialPos(Eigen::Vector3d(1.0, 2.0, M_PI / 4.0),
-                    Eigen::Matrix3d::Identity() * 0.25);  // std = 0.5
+TEST_F(EKFSLAMTest, WriteStateBlockMatchesState)
+{
+  ekf.SetInitialPos(
+    Eigen::Vector3d(1.0, 2.0, M_PI / 4.0),
+    Eigen::Matrix3d::Identity() * 0.25);  // std = 0.5
 
   const std::string path = ::testing::TempDir() + "ekf_block.csv";
   {
@@ -431,13 +471,12 @@ TEST_F(EKFSLAMTest, WriteStateBlockMatchesState) {
   EXPECT_NEAR(std::stod(f[5]), 0.5, 1e-6);  // robot std_y = sqrt(0.25)
 }
 
-TEST_F(EKFSLAMTest, WriteStateToFileRoundTrip) {
+TEST_F(EKFSLAMTest, WriteStateToFileRoundTrip)
+{
   EKFSLAM ideal;
   EKFSLAM noisy;
-  ideal.SetInitialPos(Eigen::Vector3d(1.0, 0.0, 0.0),
-                      Eigen::Matrix3d::Identity() * 0.1);
-  noisy.SetInitialPos(Eigen::Vector3d(1.1, 0.0, 0.0),
-                      Eigen::Matrix3d::Identity() * 0.1);
+  ideal.SetInitialPos(Eigen::Vector3d(1.0, 0.0, 0.0), Eigen::Matrix3d::Identity() * 0.1);
+  noisy.SetInitialPos(Eigen::Vector3d(1.1, 0.0, 0.0), Eigen::Matrix3d::Identity() * 0.1);
 
   const std::string path = ::testing::TempDir() + "ekf_row.csv";
   {
@@ -452,7 +491,7 @@ TEST_F(EKFSLAMTest, WriteStateToFileRoundTrip) {
 
   ASSERT_EQ(lines.size(), 2u);
   const std::vector<std::string> header = SplitCsv(lines[0]);
-  const std::vector<std::string> row    = SplitCsv(lines[1]);
+  const std::vector<std::string> row = SplitCsv(lines[1]);
   EXPECT_EQ(header.size(), kExpectedColumns);
   EXPECT_EQ(row.size(), kExpectedColumns);
   EXPECT_NEAR(std::stod(row[0]), 1.5, 1e-9);
@@ -462,7 +501,8 @@ TEST_F(EKFSLAMTest, WriteStateToFileRoundTrip) {
   EXPECT_NEAR(std::stod(row[1 + kBlockFields]), 1.1, 1e-6);
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char ** argv)
+{
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

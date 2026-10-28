@@ -10,14 +10,22 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
 # Find required packages
 find_package(Eigen3 REQUIRED)
 
-# Include directories
-include_directories(${EIGEN3_INCLUDE_DIR})
+# Header-only library. include/robot_tools/ is kept identical to
+# slam3d_tools/include/robot_tools/ (see scripts/check_sync.sh).
+add_library(robot_tools INTERFACE)
+target_include_directories(robot_tools INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(robot_tools INTERFACE Eigen3::Eigen)
+
+install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.hpp")
 
 # Add main executable
 add_executable(${PROJECT_NAME} main.cpp)
 
 # Link libraries
-target_link_libraries(${PROJECT_NAME} ${EIGEN3_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} robot_tools)
 
 # ============================================================================
 # Testing
@@ -37,7 +45,7 @@ if(BUILD_TESTS)
 
   # Link test libraries
   target_link_libraries(test_ext_kalman_slam
-    ${EIGEN3_LIBRARIES}
+    robot_tools
     GTest::GTest
     GTest::Main
   )

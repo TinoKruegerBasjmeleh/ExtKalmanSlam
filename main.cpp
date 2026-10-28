@@ -10,77 +10,83 @@
  *   Tino Krueger-Basjmeleh (tino.krueger@kiongroup.com)
  ******************************************************************************/
 #include <Eigen/Dense>
-
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <random>
 
-#include "cotrans.h"          // NOLINT(build/include_subdir)
-#include "ext_kalman_slam.h"  // NOLINT(build/include_subdir)
-#include "landmark_map.h"     // NOLINT(build/include_subdir)
+#include "robot_tools/cotrans2d.hpp"
+#include "robot_tools/ext_kalmanfilter_tool.hpp"
+#include "robot_tools/landmark_map.hpp"
 
-using Pose = Position2D<double>;
+using Pose = Pose2D<double>;
 using TMat = TransMatrix2D<double>;
-using CT   = CoTransT<double>;
+using CT = CoTransT<double>;
 
-struct position {
+struct position
+{
   double x;
   double y;
   double theta;
 };
 
-void printState(const EKFSLAM::EKFState& state) {
+void printState(const EKFSLAM::EKFState & state)
+{
   std::cout << "State mean (mu): " << state.mu.transpose() << std::endl;
-  std::cout << "State covariance (sigma): " << std::endl
-            << state.sigma << std::endl;
+  std::cout << "State covariance (sigma): " << std::endl << state.sigma << std::endl;
 }
 
-void calcOdometry(Pose& pos, const EKFSLAM::Control& u) {
-  double x     = pos.x;
-  double y     = pos.y;
+void calcOdometry(Pose & pos, const EKFSLAM::Control & u)
+{
+  double x = pos.x;
+  double y = pos.y;
   double theta = pos.rho;
 
   if (std::fabs(u.w) < 1e-5) {
     // Straight motion
-    pos.x   = x + u.v * u.dt * std::cos(theta);
-    pos.y   = y + u.v * u.dt * std::sin(theta);
+    pos.x = x + u.v * u.dt * std::cos(theta);
+    pos.y = y + u.v * u.dt * std::sin(theta);
     pos.rho = AngleTool::normaliseAngleSym0(theta);
   } else {
     // Pose update for non-zero angular velocity
-    pos.x   = x + u.v * std::cos(theta) * u.dt;
-    pos.y   = y + u.v * std::sin(theta) * u.dt;
+    pos.x = x + u.v * std::cos(theta) * u.dt;
+    pos.y = y + u.v * std::sin(theta) * u.dt;
     pos.rho = AngleTool::normaliseAngleSym0(theta + u.w * u.dt);
   }
 }
 
-double calcDist(const Pose& pos1, const Pose& pos2 = {}) {
+double calcDist(const Pose & pos1, const Pose & pos2 = {})
+{
   double dx = pos1.x - pos2.x;
   double dy = pos1.y - pos2.y;
   return std::sqrt(dx * dx + dy * dy);
 }
 
-double getRandomDouble(double min, double max) {
-  static std::random_device        rd;
-  static std::mt19937              gen(rd());
+double getRandomDouble(double min, double max)
+{
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
   std::uniform_real_distribution<> dis(min, max);
   return dis(gen);
 }
-int main() {
+int main()
+{
   // Create an instance of the EKF SLAM class
-  static constexpr float dt                = 0.1;    // Time step
+  static constexpr float dt = 0.1;                   // Time step
   static constexpr float measurement_range = 500.0;  // Measurement range in mm
-  Pose                   pos_robot{0, 0, 0};  // Initial position (x, y, theta)
-  Pose                   pos_m1{1300, 1000, 0}, pos_m1_in_robot{};
-  Pose                   pos_m2{-1300, 1000, 0}, pos_m2_in_robot{};
-  Pose                   pos_m3{0, 2300, 0}, pos_m3_in_robot{};
-  Pose                   pos_m4{700, 500, 0}, pos_m4_in_robot{};
-  TMat                   tm_robot_in_world{};
-  TMat                   tm_robot_in_world_inv{};
-  EKFSLAM                ekf{}, ekf_real{};
-  Eigen::Matrix3d        motionNoise;
-  Eigen::Matrix2d        measurementNoise;
+  Pose pos_robot{0, 0, 0};                           // Initial position (x, y, theta)
+  Pose pos_m1{1300, 1000, 0}, pos_m1_in_robot{};
+  Pose pos_m2{-1300, 1000, 0}, pos_m2_in_robot{};
+  Pose pos_m3{0, 2300, 0}, pos_m3_in_robot{};
+  Pose pos_m4{700, 500, 0}, pos_m4_in_robot{};
+  TMat tm_robot_in_world{};
+  TMat tm_robot_in_world_inv{};
+  // Association gate [mm] tuned for the simulated landmark layout below.
+  constexpr double kMaxDistThreshold = 500;
+  EKFSLAM ekf{kMaxDistThreshold}, ekf_real{kMaxDistThreshold};
+  Eigen::Matrix3d motionNoise;
+  Eigen::Matrix2d measurementNoise;
 
   // Small process noise
   motionNoise.setIdentity();
@@ -98,8 +104,8 @@ int main() {
   LandmarkMap prior_map;
   if (prior_map.Load("landmark_map.csv")) {
     ekf_real.SetStateFromMap(prior_map);
-    std::cout << "Seeded state from landmark_map.csv (" << prior_map.size()
-              << " landmarks)" << std::endl;
+    std::cout << "Seeded state from landmark_map.csv (" << prior_map.size() << " landmarks)"
+              << std::endl;
   }
 
   // Open output file and write header
@@ -116,18 +122,17 @@ int main() {
   for (float t = 0.0; t < 250.0; t += dt) {
     timestamp += static_cast<int64_t>(dt * 1000);  // Update timestamp in
                                                    // milliseconds
-    double noise_v = getRandomDouble(-measurementNoise(0, 0),
-                                     measurementNoise(0, 0));  // Linear
-                                                               // velocity noise
-    double noise_w = getRandomDouble(-measurementNoise(1, 1),
-                                     measurementNoise(1, 1));  // Angular
-                                                               // velocity noise
+    double noise_v =
+      getRandomDouble(-measurementNoise(0, 0), measurementNoise(0, 0));  // Linear
+                                                                         // velocity noise
+    double noise_w =
+      getRandomDouble(-measurementNoise(1, 1), measurementNoise(1, 1));  // Angular
+                                                                         // velocity noise
     // Simulate control input (e.g., move forward with some angular velocity)
     EKFSLAM::Control control{100.0, 0.1, dt};  // Linear velocity,
                                                // angular velocity,
                                                // time step
-    EKFSLAM::Control control_real{control.v + noise_v, control.w + noise_w,
-                                  control.dt};
+    EKFSLAM::Control control_real{control.v + noise_v, control.w + noise_w, control.dt};
     calcOdometry(pos_robot, control);
     CT::getTransMatrix2d(tm_robot_in_world, pos_robot);
     CT::invertTransMatrix2d(tm_robot_in_world_inv, tm_robot_in_world);
@@ -146,10 +151,7 @@ int main() {
 
     if (dist_m1 < measurement_range) {
       EKFSLAM::Measurement meas1{
-          -1,
-          Eigen::Vector2d(dist_m1,
-                          std::atan2(pos_m1_in_robot.y, pos_m1_in_robot.x)),
-          timestamp};
+        -1, Eigen::Vector2d(dist_m1, std::atan2(pos_m1_in_robot.y, pos_m1_in_robot.x)), timestamp};
       // ekf.Update(state, meas1, measurementNoise); // Update with ideal
       // measurement not needed
       ekf_real.Update(meas1, measurementNoise);
@@ -157,10 +159,7 @@ int main() {
 
     if (dist_m2 < measurement_range) {
       EKFSLAM::Measurement meas2{
-          -1,
-          Eigen::Vector2d(dist_m2,
-                          std::atan2(pos_m2_in_robot.y, pos_m2_in_robot.x)),
-          timestamp};
+        -1, Eigen::Vector2d(dist_m2, std::atan2(pos_m2_in_robot.y, pos_m2_in_robot.x)), timestamp};
       // ekf.Update(state, meas2, measurementNoise); // Update with ideal
       // measurement not needed
       ekf_real.Update(meas2, measurementNoise);
@@ -168,10 +167,7 @@ int main() {
 
     if (dist_m3 < measurement_range) {
       EKFSLAM::Measurement meas3{
-          -1,
-          Eigen::Vector2d(dist_m3,
-                          std::atan2(pos_m3_in_robot.y, pos_m3_in_robot.x)),
-          timestamp};
+        -1, Eigen::Vector2d(dist_m3, std::atan2(pos_m3_in_robot.y, pos_m3_in_robot.x)), timestamp};
       // ekf.Update(state, meas3, measurementNoise); // Update with ideal
       // measurement not needed
       ekf_real.Update(meas3, measurementNoise);
@@ -179,29 +175,22 @@ int main() {
 
     if (dist_m4 < measurement_range) {
       EKFSLAM::Measurement meas4{
-          -1,
-          Eigen::Vector2d(dist_m4,
-                          std::atan2(pos_m4_in_robot.y, pos_m4_in_robot.x)),
-          timestamp};
+        -1, Eigen::Vector2d(dist_m4, std::atan2(pos_m4_in_robot.y, pos_m4_in_robot.x)), timestamp};
       // measurement not needed
       ekf_real.Update(meas4, measurementNoise);
     }
 
-    std::cout << "Time: " << t << "s, Position: (" << pos_robot.x << ", "
-              << pos_robot.y << "), Theta: " << pos_robot.rho * 180.0 / M_PI
-              << " degrees" << "   m1: (" << pos_m1_in_robot.x << ", "
-              << pos_m1_in_robot.y
-              << "), Theta: " << pos_m1_in_robot.rho * 180.0 / M_PI
-              << " degrees" << "   m2: (" << pos_m2_in_robot.x << ", "
-              << pos_m2_in_robot.y
-              << "), Theta: " << pos_m2_in_robot.rho * 180.0 / M_PI
-              << " degrees" << "   m3: (" << pos_m3_in_robot.x << ", "
-              << pos_m3_in_robot.y
-              << "), Theta: " << pos_m3_in_robot.rho * 180.0 / M_PI
-              << " degrees" << "   m4: (" << pos_m4_in_robot.x << ", "
-              << pos_m4_in_robot.y
-              << "), Theta: " << pos_m4_in_robot.rho * 180.0 / M_PI
-              << " degrees" << "  noise: " << noise_v << std::endl;
+    std::cout << "Time: " << t << "s, Position: (" << pos_robot.x << ", " << pos_robot.y
+              << "), Theta: " << pos_robot.rho * 180.0 / M_PI << " degrees" << "   m1: ("
+              << pos_m1_in_robot.x << ", " << pos_m1_in_robot.y
+              << "), Theta: " << pos_m1_in_robot.rho * 180.0 / M_PI << " degrees" << "   m2: ("
+              << pos_m2_in_robot.x << ", " << pos_m2_in_robot.y
+              << "), Theta: " << pos_m2_in_robot.rho * 180.0 / M_PI << " degrees" << "   m3: ("
+              << pos_m3_in_robot.x << ", " << pos_m3_in_robot.y
+              << "), Theta: " << pos_m3_in_robot.rho * 180.0 / M_PI << " degrees" << "   m4: ("
+              << pos_m4_in_robot.x << ", " << pos_m4_in_robot.y
+              << "), Theta: " << pos_m4_in_robot.rho * 180.0 / M_PI << " degrees"
+              << "  noise: " << noise_v << std::endl;
 
     // Write state to file (ideal first, then noisy)
     EKFSLAM::WriteStateToFile(outFile, t, ekf, ekf_real);
