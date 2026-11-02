@@ -224,6 +224,37 @@ TEST_F(EKFSLAMTest, DataAssociationReobservesSameLandmark)
   EXPECT_DOUBLE_EQ(lm1(1), 0.0);
 }
 
+TEST_F(EKFSLAMTest, RemoveLandmarkClearsStateAndAllowsReinsertion)
+{
+  EKFSLAM::Measurement first{-1, Eigen::Vector2d(5.0, 0.0), 0};
+  ASSERT_TRUE(ekf.Update(first, measurementNoise));
+  ASSERT_NEAR(ekf.LandmarkPose(0)(0), 5.0, 1e-5);
+
+  EXPECT_TRUE(ekf.RemoveLandmark(0));
+  EXPECT_DOUBLE_EQ(ekf.LandmarkPose(0)(0), 0.0);
+  EXPECT_DOUBLE_EQ(ekf.LandmarkPose(0)(1), 0.0);
+
+  // The slot is free again, so a new measurement is allocated to it.
+  EKFSLAM::Measurement again{-1, Eigen::Vector2d(7.0, 0.0), 100};
+  EXPECT_EQ(ekf.GetAssociatedLandmarkId(again), 0);
+  ASSERT_TRUE(ekf.Update(again, measurementNoise));
+
+  Eigen::Vector2d lm = ekf.LandmarkPose(0);
+  EXPECT_NEAR(lm(0), 7.0, 1e-5);
+  EXPECT_NEAR(lm(1), 0.0, 1e-5);
+
+  // Reinitialised covariance must be finite again.
+  EKFSLAM::Variances var = ekf.GetVariances();
+  EXPECT_TRUE(std::isfinite(var.landmarks[0](0)));
+  EXPECT_TRUE(std::isfinite(var.landmarks[0](1)));
+}
+
+TEST_F(EKFSLAMTest, RemoveLandmarkRejectsInvalidId)
+{
+  EXPECT_FALSE(ekf.RemoveLandmark(-1));
+  EXPECT_FALSE(ekf.RemoveLandmark(static_cast<int>(EKFSLAM::NUM_LANDMARKS)));
+}
+
 TEST_F(EKFSLAMTest, MaxDistThresholdDefaultsAndIsConfigurable)
 {
   EXPECT_DOUBLE_EQ(ekf.GetMaxDistThreshold(), EKFSLAM::DEFAULT_MAX_DIST_THRESHOLD);
