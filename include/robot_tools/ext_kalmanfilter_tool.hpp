@@ -111,6 +111,12 @@ public:
     return state_.sigma.block<3, 2>(0, LandmarkIndex(landmark_id));
   }
 
+  bool RemoveLandmark(int landmark_id)
+  {
+    if (landmark_id < 0 || static_cast<size_t>(landmark_id) >= NUM_LANDMARKS) return false;
+    return RemoveLandmark(state_, landmark_id);
+  }
+
   /**
    * @brief GetAssociatedLandmarkId
    * Perform data association for a given measurement.
@@ -343,6 +349,27 @@ private:
   {
     state.mu.head<3>() = initialPos;
     state.sigma.block<3, 3>(0, 0) = initialCov;
+  }
+
+  /****************************************************************************
+   * @brief RemoveLandmark
+   * Remove a landmark from the state by setting its position to 0 and its
+   * covariance to max double identity.
+   * @param state the current EKF state
+   * @param landmarkId the ID of the landmark to remove
+   * @return true if the landmark was successfully removed, false otherwise
+   * ***************************************************************************/
+  bool RemoveLandmark(EKFState & state, int landmarkId)
+  {
+    int idx = LandmarkIndex(landmarkId);
+    if (idx < 0 || idx + 1 >= state.mu.size()) {
+      return false;
+    }
+    state.mu(idx) = 0.0;
+    state.mu(idx + 1) = 0.0;
+    state.sigma.block<2, 2>(idx, idx) =
+      Eigen::Matrix2d::Identity() * std::numeric_limits<double>::max();
+    return true;
   }
 
   /****************************************************************************
