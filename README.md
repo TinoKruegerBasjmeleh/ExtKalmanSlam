@@ -59,12 +59,28 @@ python3 animate_ekf.py       # renders the animation
 
 ```
 .
-├── ext_kalman_slam.h        # EKF SLAM class (predict, update, init)
+├── include/robot_tools/      # Header-only library, shared 1:1 with slam3d_tools
+│   ├── ext_kalmanfilter_tool.hpp  # EKF SLAM class (predict, update, init)
+│   ├── cotrans2d.hpp              # 2D coordinate transforms (Pose2D, CoTransT)
+│   ├── angletool.hpp              # Angle normalisation utility
+│   └── landmark_map.hpp           # Landmark map + CSV load/save
 ├── main.cpp                 # Simulation loop, logging
 ├── animate_ekf.py           # Matplotlib animation from log file
-├── cotrans.cpp / .h         # 2D coordinate transforms
-├── angle_tool.h             # Angle normalisation utility
-├── position2d.h             # 2D pose struct
-├── test_ext_kalman_slam.cpp # GTest unit tests
+├── test_ext_kalman_slam.cpp # GTest unit tests (= slam3d test_ext_kalmanfilter_tool.cpp)
+├── scripts/sync_slam3d.sh   # Check / copy shared files to slam3d_tools
 └── CMakeLists.txt
 ```
+
+## Sharing with slam3d_tools
+
+`include/robot_tools/*.hpp` and `test_ext_kalman_slam.cpp` are kept byte-identical
+with `slam3d-ngp/src/slam3d_tools`. This repo is the source of truth:
+
+```bash
+scripts/sync_slam3d.sh          # check, exits 1 on any difference
+scripts/sync_slam3d.sh --copy   # copy into slam3d_tools
+```
+
+Both repos use the same `.clang-format` (ROS 2 style) and cpplint settings (`CPPLINT.cfg`).
+Project-specific tuning goes through constructor parameters, not header edits,
+e.g. `EKFSLAM ekf{500.0};` sets the data-association gate in mm (default 2500).
