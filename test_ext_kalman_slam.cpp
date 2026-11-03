@@ -255,6 +255,62 @@ TEST_F(EKFSLAMTest, RemoveLandmarkRejectsInvalidId)
   EXPECT_FALSE(ekf.RemoveLandmark(static_cast<int>(EKFSLAM::NUM_LANDMARKS)));
 }
 
+// Landmarks at (3000, 0) and (0, 3000), farther apart than the association gate.
+constexpr double kRange = 3000.0;
+
+TEST_F(EKFSLAMTest, TimeoutRemovesOnlyStaleLandmark)
+{
+  EKFSLAM::Measurement a{-1, Eigen::Vector2d(kRange, 0.0), 100};
+  ASSERT_TRUE(ekf.Update(a, measurementNoise));
+  EKFSLAM::Measurement b{-1, Eigen::Vector2d(kRange, M_PI / 2.0), 100};
+  ASSERT_TRUE(ekf.Update(b, measurementNoise));
+  ASSERT_EQ(b.id, 1);
+
+  const int64_t later = 100 + ekf.GetLandmarkTimeout() + 1;
+  EKFSLAM::Measurement b_again{-1, Eigen::Vector2d(kRange, M_PI / 2.0), later};
+  ASSERT_TRUE(ekf.Update(b_again, measurementNoise));
+
+  EXPECT_EQ(b_again.id, 1);
+  EXPECT_DOUBLE_EQ(ekf.LandmarkPose(0).norm(), 0.0);
+  EXPECT_NEAR(ekf.LandmarkPose(1)(1), kRange, 1.0);
+  const Landmark * removed = ekf.GetLandmarkMap().Find(0);
+  ASSERT_NE(removed, nullptr);
+  EXPECT_EQ(removed->timestamp, 0);
+  EXPECT_EQ(removed->x, std::numeric_limits<double>::max());
+}
+
+TEST_F(EKFSLAMTest, TimeoutKeepsIdOfReobservedLandmark)
+{
+  EKFSLAM::Measurement a{-1, Eigen::Vector2d(kRange, M_PI / 2.0), 100};
+  EKFSLAM::Measurement b{-1, Eigen::Vector2d(kRange, 0.0), 100};
+  ASSERT_TRUE(ekf.Update(a, measurementNoise));
+  ASSERT_TRUE(ekf.Update(b, measurementNoise));
+  ASSERT_EQ(b.id, 1);
+  ASSERT_TRUE(ekf.RemoveLandmark(0));
+
+  // b returns after the timeout and must stay in slot 1, not move to free slot 0.
+  const int64_t later = 100 + ekf.GetLandmarkTimeout() + 1;
+  EKFSLAM::Measurement b_again{-1, Eigen::Vector2d(kRange, 0.0), later};
+  ASSERT_TRUE(ekf.Update(b_again, measurementNoise));
+
+  EXPECT_EQ(b_again.id, 1);
+  EXPECT_DOUBLE_EQ(ekf.LandmarkPose(0).norm(), 0.0);
+  EXPECT_NEAR(ekf.LandmarkPose(1)(0), kRange, 1.0);
+}
+
+TEST_F(EKFSLAMTest, SeededLandmarkIgnoresTimestampOfPreviousRun)
+{
+  LandmarkMap map;
+  map.AddLandmark(0, kRange, 0.0, 10.0, 10.0, 203200);
+  ekf.SetStateFromMap(map);
+
+  EKFSLAM::Measurement other{-1, Eigen::Vector2d(kRange, M_PI / 2.0), 100};
+  ASSERT_TRUE(ekf.Update(other, measurementNoise));
+
+  EXPECT_EQ(other.id, 1);
+  EXPECT_NEAR(ekf.LandmarkPose(0)(0), kRange, 1e-9);
+}
+
 TEST_F(EKFSLAMTest, MaxDistThresholdDefaultsAndIsConfigurable)
 {
   EXPECT_DOUBLE_EQ(ekf.GetMaxDistThreshold(), EKFSLAM::DEFAULT_MAX_DIST_THRESHOLD);

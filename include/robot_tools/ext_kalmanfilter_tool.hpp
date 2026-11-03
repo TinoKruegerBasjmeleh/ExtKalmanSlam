@@ -15,6 +15,7 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -34,7 +35,7 @@ public:
   static constexpr double DEFAULT_MAX_DIST_THRESHOLD = 2500;
   // Minimum time difference in ms for detecting loop closure
   static constexpr int64_t MIN_TIMEDIFF_2_DETECT_LOOP_CLOSURE = 1000;
-
+  static constexpr int64_t DEFAULT_LANDMARK_TIMEOUT = 60000;
   struct EKFState
   {
     Eigen::VectorXd mu{};     // State mean
@@ -66,9 +67,22 @@ public:
 
   bool Update(Measurement & meas, const Eigen::Matrix2d & Q)
   {
-    int assoziated_id = -1;
-    // make data association
-    assoziated_id = GetAssociatedLandmarkId(meas);
+    // Associate before pruning, so a re-observed landmark keeps its id and can close the loop.
+    const int assoziated_id = GetAssociatedLandmarkId(meas);
+
+    for (int id = 0; id < static_cast<int>(NUM_LANDMARKS); ++id) {
+      if (!CheckIfLandmarkObserved(state_, id)) continue;
+      // Landmarks seeded from a stored map start their timeout at the first measurement.
+      if (map_[id].timestamp == TIMESTAMP_UNSET) {
+        map_[id].timestamp = meas.timestamp;
+        continue;
+      }
+      const int64_t unseen_for = std::abs(meas.timestamp - map_[id].timestamp);
+      if (id != assoziated_id && unseen_for > landmark_timeout_) {
+        RemoveLandmark(id);
+      }
+    }
+
     if (assoziated_id == -1) return false;
     if (assoziated_id < 0 || static_cast<size_t>(assoziated_id) >= map_.size()) return false;
 
@@ -77,7 +91,7 @@ public:
     meas.id = assoziated_id;
     // update the kalman state based on observation
     bool detect_loop_closure =
-      abs(meas.timestamp - lm.timestamp) > MIN_TIMEDIFF_2_DETECT_LOOP_CLOSURE ? true : false;
+      std::abs(meas.timestamp - lm.timestamp) > MIN_TIMEDIFF_2_DETECT_LOOP_CLOSURE ? true : false;
     Update(state_, meas, Q, detect_loop_closure);
 
     // update the landmark inside map from the state
@@ -114,6 +128,8 @@ public:
   bool RemoveLandmark(int landmark_id)
   {
     if (landmark_id < 0 || static_cast<size_t>(landmark_id) >= NUM_LANDMARKS) return false;
+    map_[landmark_id] =
+      Landmark(landmark_id, std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
     return RemoveLandmark(state_, landmark_id);
   }
 
@@ -140,8 +156,8 @@ public:
     TransMatrix2D<double> tm_robot_in_world{};
 
     // 1. Transform the measurement into global coordinates.
-    CoTransT<double>::getTransMatrix2d(tm_robot_in_world, robot_global);
-    CoTransT<double>::transPosition2d(tm_robot_in_world, lm_pos_robot_relative, lm_pos_global);
+    CoTrans2D::GetTransMatrix(tm_robot_in_world, robot_global);
+    CoTrans2D::TransPosition(tm_robot_in_world, lm_pos_robot_relative, lm_pos_global);
 
     // 2. Match against the current state estimates (single source of truth),
     //    keeping the nearest already-observed landmark within the gate.
@@ -172,6 +188,8 @@ public:
     for (const Landmark & lm : map.GetAll()) {
       if (lm.id >= 0 && static_cast<size_t>(lm.id) < NUM_LANDMARKS) {
         map_[lm.id] = lm;
+        // Stored timestamps come from a previous run's clock.
+        map_[lm.id].timestamp = TIMESTAMP_UNSET;
       }
     }
     SetStateFromMap(state_, map);
@@ -248,11 +266,16 @@ public:
   }
 
   double GetMaxDistThreshold() const { return max_dist_threshold_; }
+  int64_t GetLandmarkTimeout() const { return landmark_timeout_; }
+  void SetLandmarkTimeout(int64_t timeout) { landmark_timeout_ = timeout; }
 
 private:
+  static constexpr int64_t TIMESTAMP_UNSET = std::numeric_limits<int64_t>::min();
+
   LandmarkMap map_{};
   EKFState state_{};
   double max_dist_threshold_{DEFAULT_MAX_DIST_THRESHOLD};  // Association gate in mm
+  int64_t landmark_timeout_{DEFAULT_LANDMARK_TIMEOUT};
 
   void Predict(EKFState & state, const Control & u, const Eigen::Matrix3d & motionNoise)
   {
@@ -625,15 +648,15 @@ private:
     int idx = LandmarkIndex(landmarkId);
 
     // Initialize landmark position in global coordinates using the
-    // double-precision templated CoTransT (the legacy float CoTrans
+    // double-precision CoTrans2D (the legacy float CoTrans
     // truncates offsets to int inside getOffset).
     Pose2D<double> robot_pose{x, y, theta};
     Pose2D<double> landmark_pose{r * std::cos(phi), r * std::sin(phi), 0.0};
     Pose2D<double> landmark_pose_in_world{};
 
     TransMatrix2D<double> tm_robot_in_world{};
-    CoTransT<double>::getTransMatrix2d(tm_robot_in_world, robot_pose);
-    CoTransT<double>::transPosition2d(tm_robot_in_world, landmark_pose, landmark_pose_in_world);
+    CoTrans2D::GetTransMatrix(tm_robot_in_world, robot_pose);
+    CoTrans2D::TransPosition(tm_robot_in_world, landmark_pose, landmark_pose_in_world);
 
     double lm_x = landmark_pose_in_world.x;
     double lm_y = landmark_pose_in_world.y;

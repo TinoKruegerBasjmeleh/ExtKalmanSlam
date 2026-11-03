@@ -22,7 +22,7 @@
 
 using Pose = Pose2D<double>;
 using TMat = TransMatrix2D<double>;
-using CT = CoTransT<double>;
+using CT = CoTrans2D;
 
 struct position
 {
@@ -134,12 +134,12 @@ int main()
                                                // time step
     EKFSLAM::Control control_real{control.v + noise_v, control.w + noise_w, control.dt};
     calcOdometry(pos_robot, control);
-    CT::getTransMatrix2d(tm_robot_in_world, pos_robot);
-    CT::invertTransMatrix2d(tm_robot_in_world_inv, tm_robot_in_world);
-    CT::transPosition2d(tm_robot_in_world_inv, pos_m1, pos_m1_in_robot);
-    CT::transPosition2d(tm_robot_in_world_inv, pos_m2, pos_m2_in_robot);
-    CT::transPosition2d(tm_robot_in_world_inv, pos_m3, pos_m3_in_robot);
-    CT::transPosition2d(tm_robot_in_world_inv, pos_m4, pos_m4_in_robot);
+    CT::GetTransMatrix(tm_robot_in_world, pos_robot);
+    CT::InvertTransMatrix(tm_robot_in_world, tm_robot_in_world_inv);
+    CT::TransPosition(tm_robot_in_world_inv, pos_m1, pos_m1_in_robot);
+    CT::TransPosition(tm_robot_in_world_inv, pos_m2, pos_m2_in_robot);
+    CT::TransPosition(tm_robot_in_world_inv, pos_m3, pos_m3_in_robot);
+    CT::TransPosition(tm_robot_in_world_inv, pos_m4, pos_m4_in_robot);
 
     double dist_m1 = calcDist(pos_m1_in_robot);
     double dist_m2 = calcDist(pos_m2_in_robot);
